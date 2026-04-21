@@ -1,0 +1,41 @@
+.factura-m5 {
+  border: 2px solid #000;
+  padding: 20px;
+  max-width: 900px;
+  margin: auto;
+  font-family: Arial, sans-serif;
+}
+
+.factura-m5 header {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 2px solid #000;
+  margin-bottom: 10px;
+}
+
+.factura-m5 img {
+  width: 120px;
+}
+
+.tabla-dispositivo {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+.tabla-dispositivo th,
+.tabla-dispositivo td {
+  border: 1px solid #000;
+  padding: 6px;
+  text-align: center;
+}
+
+.observaciones {
+  margin-top: 15px;
+}
+
+.firmas {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 40px;
+}

@@ -1,0 +1,402 @@
+﻿/* src/styles/firma.css */
+
+.firma-container {
+  margin: 15px 0;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+}
+
+.firma-label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 600;
+  color: #333;
+  font-size: 14px;
+}
+
+.firma-canvas-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  align-items: center;
+}
+
+.firma-canvas {
+  width: 100%;
+  max-width: 400px;
+  height: 150px;
+  border: 2px solid #4f46e5;
+  border-radius: 6px;
+  background: white;
+  cursor: crosshair;
+  touch-action: none; /* Importante para touch */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.firma-canvas:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.firma-preview {
+  padding: 10px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  max-width: 200px;
+}
+
+.firma-img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.firma-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 15px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.btn-limpiar {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.3s;
+}
+
+.btn-limpiar:hover:not(:disabled) {
+  background: #c82333;
+  transform: translateY(-1px);
+}
+
+.btn-limpiar:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.firma-instructions {
+  color: #666;
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .firma-canvas {
+    height: 120px;
+  }
+  
+  .firma-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .btn-limpiar {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Estilos para pantallas táctiles */
+@media (hover: none) and (pointer: coarse) {
+  .firma-canvas {
+    border-width: 3px;
+  }
+  
+  .firma-instructions {
+    font-size: 14px;
+    text-align: center;
+  }
+}/* src/styles/factura.css - AGREGAR ESTOS ESTILOS */
+
+/* =============================
+   ESTILOS PARA BLOQUE/DESBLOQUEO
+============================= */
+.estado-factura {
+  margin-top: 10px;
+}
+
+.badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-block;
+  text-transform: none;
+  letter-spacing: 0.5px;
+}
+
+.badge-bloqueada {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+}
+
+.badge-editable {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
+/* Botones de acción */
+.bloque.acciones {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 2px solid #e5e7eb;
+  text-align: center;
+}
+
+.btn-guardar {
+  background: linear-gradient(135deg, var(--brand-800) 0%, var(--brand-700) 100%);
+  color: white;
+  border: none;
+  padding: 14px 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 16px;
+  transition: all 0.3s;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 250px;
+  justify-content: center;
+}
+
+.btn-guardar:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.botones-bloqueados {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-desbloquear {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+  transition: all 0.3s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 200px;
+  justify-content: center;
+}
+
+.btn-desbloquear:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.btn-eliminar {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+  transition: all 0.3s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 200px;
+  justify-content: center;
+}
+
+.btn-eliminar:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+/* Modal de desbloqueo */
+.unlock-modal-content {
+  background: white;
+  width: 90%;
+  max-width: 500px;
+  border-radius: 12px;
+  box-shadow: 0 5px 30px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  animation: modalFadeIn 0.3s ease;
+  max-height: 85vh;
+  overflow-y: auto;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16px;
+}
+
+.unlock-warning {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.unlock-warning p {
+  margin: 0;
+  color: #92400e;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.unlock-instructions {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 20px 0;
+}
+
+.unlock-instructions p {
+  font-weight: 600;
+  color: var(--brand-800);
+  margin-bottom: 15px;
+  font-size: 16px;
+}
+
+.unlock-instructions ul {
+  margin: 0;
+  padding-left: 20px;
+  color: #374151;
+}
+
+.unlock-instructions li {
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Input con error */
+.input-error {
+  border-color: #ef4444 !important;
+  background-color: #fef2f2 !important;
+}
+
+.error-message {
+  color: #dc2626;
+  font-size: 13px;
+  margin-top: 5px;
+  font-weight: 500;
+}
+
+.hint {
+  color: #6b7280;
+  font-size: 12px;
+  margin-top: 5px;
+  display: block;
+  font-style: italic;
+}
+
+/* Placeholders en modo edición */
+input:disabled::placeholder {
+  color: transparent;
+}
+
+input:not(:disabled)::placeholder {
+  color: #9ca3af;
+}
+
+/* Responsive para botones */
+@media (max-width: 768px) {
+  .botones-bloqueados {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .btn-guardar,
+  .btn-desbloquear,
+  .btn-eliminar {
+    width: 100%;
+    max-width: 300px;
+  }
+  
+  .unlock-modal-content {
+    width: 95%;
+    max-height: 80vh;
+  }
+}
+
+/* Para pantallas pequeñas */
+@media (max-width: 480px) {
+  .badge {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+  
+  .btn-guardar,
+  .btn-desbloquear,
+  .btn-eliminar {
+    padding: 12px 20px;
+    font-size: 14px;
+    min-width: auto;
+  }
+}
+
+/* ===== MODAL RESPONSIVE HARDENING ===== */
+.unlock-modal-content {
+  width: min(520px, 100%);
+  max-height: calc(100svh - 20px);
+}
+
+@media (max-width: 768px) {
+  .unlock-modal-content {
+    width: calc(100% - 20px);
+    max-height: calc(100svh - 20px);
+    border-radius: 10px;
+    top: max(10px, env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .unlock-instructions {
+    padding: 14px;
+    margin: 14px 0;
+  }
+
+  .unlock-warning {
+    padding: 12px;
+    margin-bottom: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .unlock-modal-content {
+    width: calc(100% - 12px);
+    max-height: calc(100svh - 12px);
+    border-radius: 9px;
+  }
+}
+
+@media (max-height: 800px) {
+  .unlock-modal-content {
+    top: max(10px, env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}

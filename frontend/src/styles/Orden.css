@@ -1,0 +1,1237 @@
+﻿/* =========================================== */
+/* FACTURA.CSS - ESTILOS COMPLETOS */
+/* =========================================== */
+
+/* =============================
+   CONTENEDOR PRINCIPAL
+============================= */
+.factura {
+  max-width: 900px;
+  margin: auto;
+  padding: 24px;
+  background: white;
+  font-family: Arial, sans-serif;
+  font-size: 12px;
+  color: #000;
+  box-sizing: border-box;
+  box-shadow: 0 0 15px rgba(0,0,0,0.1);
+  border-radius: 8px;
+}
+
+/* =============================
+   HEADER
+============================= */
+.factura-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #000;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+}
+
+.empresa {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.empresa-secundaria {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 140px;
+}
+
+.logo-secundario {
+  width: 130px;
+  height: auto;
+  object-fit: contain;
+}
+
+.logo {
+  width: 90px;
+  height: auto;
+  object-fit: contain;
+}
+
+.empresa-datos h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--brand-900);
+  text-transform: none;
+  letter-spacing: 0.5px;
+}
+
+.empresa-datos p {
+  margin: 2px 0;
+  font-size: 12px;
+  color: #333;
+}
+
+.factura-info {
+  text-align: right;
+  font-size: 12px;
+  flex: 0 0 300px;
+}
+
+.factura-info p {
+  margin: 3px 0;
+  line-height: 1.3;
+}
+
+.factura-info strong {
+  color: #000;
+  font-weight: 600;
+}
+
+/* =============================
+   ESTADO DE FACTURA
+============================= */
+.estado-factura {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: none;
+  letter-spacing: 0.5px;
+}
+
+.badge-bloqueada {
+  background-color: #ffebee;
+  color: #c62828;
+  border: 1px solid #ffcdd2;
+}
+
+.badge-editable {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #c8e6c9;
+}
+
+/* =============================
+   TÍTULO
+============================= */
+.factura-titulo {
+  text-align: center;
+  margin: 20px 0 25px 0;
+  font-size: 22px;
+  font-weight: bold;
+  color: var(--brand-900);
+  letter-spacing: 1px;
+  padding-bottom: 10px;
+  border-bottom: 3px solid var(--brand-900);
+}
+
+/* =============================
+   BLOQUES GENERALES
+============================= */
+.bloque {
+  border: 1px solid #ddd;
+  padding: 15px;
+  margin-bottom: 15px;
+  border-radius: 6px;
+  background: #f8f9fa;
+  page-break-inside: avoid;
+}
+
+.bloque h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  text-transform: none;
+  font-weight: bold;
+  color: var(--brand-900);
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--brand-900);
+}
+
+/* =============================
+   GRID FLEX PARA DATOS DEL ACTIVO
+============================= */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.grid p {
+  margin: 4px 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.grid strong {
+  color: #000;
+  font-weight: 600;
+  display: inline-block;
+  min-width: 120px;
+}
+
+/* =============================
+   CAMPOS EDITABLES
+============================= */
+.campo {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 10px;
+  width: 100%;
+}
+
+.campo label {
+  font-weight: 600;
+  font-size: 12px;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.campo input {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 8px;
+  background: white;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.campo input:focus {
+  outline: none;
+  border-color: var(--brand-900);
+  box-shadow: 0 0 0 3px rgba(2, 48, 89, 0.12);
+}
+
+.campo input:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+  color: #666;
+}
+
+/* =============================
+   CHECKBOXES
+============================= */
+.checkboxes {
+  display: flex;
+  gap: 20px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.checkboxes input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  margin: 0;
+}
+
+/* =============================
+   TEXTAREA
+============================= */
+.textarea {
+  width: 100%;
+  min-height: 80px;
+  border: 1px solid #ddd;
+  padding: 10px;
+  font-size: 12px;
+  resize: vertical;
+  box-sizing: border-box;
+  border-radius: 4px;
+  font-family: inherit;
+  line-height: 1.4;
+  background: white;
+}
+
+.textarea:read-only {
+  background-color: #f8f9fa;
+  cursor: default;
+}
+
+/* =============================
+   CAMPO DE FIRMA
+============================= */
+.campo-firma {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.campo-firma label {
+  font-weight: 600;
+  font-size: 12px;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.btn-firmar {
+  background: linear-gradient(135deg, #4f46e5, #3730a3);
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.btn-firmar:hover:not(:disabled) {
+  background: linear-gradient(135deg, #3730a3, #312e81);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(79, 70, 229, 0.3);
+}
+
+.btn-firmar:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #6c757d;
+}
+
+/* =============================
+   PREVIEW DE FIRMA
+============================= */
+.signature-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  max-width: 250px;
+}
+
+.signature-preview-img {
+  max-width: 200px;
+  max-height: 60px;
+  object-fit: contain;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
+}
+
+.signature-preview small {
+  font-size: 10px;
+  color: #666;
+  font-style: italic;
+}
+
+/* =============================
+   BOTONES DE ACCIÓN
+============================= */
+.bloque.acciones {
+  text-align: center;
+  padding: 20px;
+  background: #f8f9fa;
+}
+
+.btn-guardar {
+  background: linear-gradient(135deg, #28a745, #218838);
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-guardar:hover:not(:disabled) {
+  background: linear-gradient(135deg, #218838, #1e7e34);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
+.botones-bloqueados {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-desbloquear {
+  background: linear-gradient(135deg, #fd7e14, #e8590c);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-eliminar {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-imprimir {
+  background: linear-gradient(135deg, #6f42c1, #5a32a3);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-desbloquear:hover:not(:disabled),
+.btn-eliminar:hover:not(:disabled),
+.btn-imprimir:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn-desbloquear:disabled,
+.btn-eliminar:disabled,
+.btn-imprimir:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* =============================
+   MODALES
+============================= */
+.signature-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 12000;
+  padding: 20px;
+}
+
+.signature-modal-content,
+.unlock-modal-content {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.signature-modal-header {
+  background: linear-gradient(135deg, var(--brand-900), var(--brand-800));
+  color: white;
+  padding: 20px;
+  border-radius: 12px 12px 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.signature-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.close-modal {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 7px 12px;
+  min-width: 86px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  text-transform: none;
+  letter-spacing: 0.35px;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.close-modal:hover {
+  background: rgba(255, 255, 255, 0.24);
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(7, 18, 48, 0.35);
+}
+
+.signature-modal-body {
+  padding: 25px;
+}
+
+.unlock-warning {
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 6px;
+  padding: 15px;
+  margin-bottom: 20px;
+  color: #856404;
+}
+
+.unlock-warning p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.unlock-instructions {
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 15px;
+  border: 1px solid #e9ecef;
+}
+
+.unlock-instructions ul {
+  margin: 10px 0 0 20px;
+  padding: 0;
+}
+
+.unlock-instructions li {
+  margin-bottom: 5px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.signature-modal-instructions {
+  background: #e3f2fd;
+  border-radius: 6px;
+  padding: 15px;
+  margin-top: 20px;
+  border: 1px solid #bbdefb;
+}
+
+.signature-modal-instructions ul {
+  margin: 10px 0 0 20px;
+  padding: 0;
+}
+
+.signature-modal-instructions li {
+  margin-bottom: 5px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.signature-modal-footer {
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 0 0 12px 12px;
+  border-top: 1px solid #dee2e6;
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+.btn-confirmar-firma,
+.btn-cancelar-firma {
+  padding: 12px 25px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 150px;
+}
+
+.btn-confirmar-firma {
+  background: linear-gradient(135deg, #28a745, #218838);
+  color: white;
+}
+
+.btn-cancelar-firma {
+  background: linear-gradient(135deg, #6c757d, #5a6268);
+  color: white;
+}
+
+.btn-confirmar-firma:hover:not(:disabled),
+.btn-cancelar-firma:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn-confirmar-firma:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* =============================
+   FILTROS HEADER (para página de facturas)
+============================= */
+.filtros-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+}
+
+.filtros-header h2 {
+  margin: 0;
+  color: #343a40;
+  font-size: 1.5rem;
+}
+
+.filtro-bloqueadas {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.filtro-bloqueadas label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #495057;
+  font-size: 14px;
+}
+
+.filtro-bloqueadas input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.btn-ver-factura {
+  background: linear-gradient(135deg, #4f46e5, #3730a3);
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s;
+}
+
+.btn-ver-factura:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(79, 70, 229, 0.3);
+}
+
+/* =============================
+   INPUTS PARA MÓVILES
+============================= */
+.modal-inputs {
+  margin: 20px 0;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.modal-inputs .campo {
+  margin-bottom: 15px;
+}
+
+.modal-inputs .campo:last-child {
+  margin-bottom: 0;
+}
+
+.modal-inputs input {
+  font-size: 16px !important;
+  height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background: white;
+}
+
+.modal-inputs input:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+/* =============================
+   ESTILOS DE IMPRESIÓN
+============================= */
+@page {
+  size: A4;
+  margin: 15mm;
+}
+
+@media print {
+  body {
+    background: white;
+    margin: 0;
+    padding: 0;
+  }
+
+  body * {
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .factura {
+    width: 100%;
+    max-width: 100%;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+    border: none;
+    border-radius: 0;
+  }
+
+  .btn-guardar,
+  .btn-desbloquear,
+  .btn-eliminar,
+  .btn-imprimir,
+  .btn-firmar,
+  .factura-close-btn,
+  .factura .campo input:disabled,
+  .factura .campo input[readonly],
+  .factura-header .badge,
+  .bloque.acciones {
+    display: none !important;
+  }
+
+  .campo input,
+  .campo input:disabled {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #000 !important;
+  }
+
+  .bloque {
+    border: 1px solid #000;
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    page-break-inside: avoid;
+  }
+
+  .bloque h3 {
+    color: #000;
+    border-bottom: 1px solid #000;
+  }
+
+  .grid p {
+    color: #000;
+  }
+
+  .grid strong {
+    color: #000;
+  }
+
+  .signature-preview-img {
+    max-width: 150px;
+    max-height: 50px;
+    border: 1px solid #ccc;
+  }
+
+  /* Asegurar que el header se imprima completo */
+  .factura-header {
+    page-break-inside: avoid;
+    border-bottom: 2px solid #000;
+  }
+
+  /* Mostrar número de factura claramente en impresión */
+  .factura-info p {
+    color: #000;
+  }
+
+  /* Asegurar que las firmas se vean en impresión */
+  .signature-preview {
+    border: 1px solid #ccc;
+    background: white;
+  }
+}
+
+/* =============================
+   RESPONSIVE DESIGN
+============================= */
+@media (max-width: 768px) {
+  .factura {
+    padding: 15px;
+    font-size: 11px;
+  }
+
+  .factura-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .empresa {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .empresa-secundaria {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .factura-info {
+    width: 100%;
+    text-align: left;
+    flex: none;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .grid p {
+    width: 100%;
+  }
+
+  .botones-bloqueados {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .btn-desbloquear,
+  .btn-eliminar,
+  .btn-imprimir {
+    width: 100%;
+    max-width: 300px;
+  }
+
+  .filtros-header {
+    flex-direction: column;
+    gap: 15px;
+    align-items: flex-start;
+  }
+  
+  .filtro-bloqueadas {
+    width: 100%;
+  }
+
+  .signature-modal-content,
+  .unlock-modal-content {
+    width: 95%;
+    margin: 10px;
+  }
+
+  .signature-modal-footer {
+    flex-direction: column;
+  }
+
+  .btn-confirmar-firma,
+  .btn-cancelar-firma {
+    width: 100%;
+    min-width: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .factura {
+    padding: 10px;
+  }
+
+  .factura-titulo {
+    font-size: 18px;
+  }
+
+  .empresa-datos h2 {
+    font-size: 16px;
+  }
+
+  .bloque {
+    padding: 10px;
+  }
+
+  .checkboxes {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
+/* =============================
+   SOPORTE PARA SAFARI iOS
+============================= */
+@supports (-webkit-touch-callout: none) {
+  .modal-inputs input {
+    font-size: 16px;
+    line-height: 1.4;
+  }
+  
+  .signature-modal-content,
+  .unlock-modal-content {
+    max-height: -webkit-fill-available;
+  }
+}
+
+/* Prevenir el pull-to-refresh en iOS cuando hay modal abierto */
+@supports (-webkit-touch-callout: none) {
+  body.modal-open {
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+    position: fixed;
+    width: 100%;
+  }
+}
+
+/* =============================
+   MEJORAS DE ACCESIBILIDAD
+============================= */
+.campo input:focus,
+.btn-firmar:focus,
+.btn-guardar:focus,
+.btn-desbloquear:focus,
+.btn-eliminar:focus,
+.btn-imprimir:focus,
+.btn-confirmar-firma:focus,
+.btn-cancelar-firma:focus {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+/* Asegurar contraste suficiente */
+.grid strong,
+.campo label,
+.bloque h3 {
+  color: #000;
+}
+
+/* Indicadores de campos obligatorios */
+.campo label.required::after {
+  content: " *";
+  color: #dc3545;
+}
+
+/* Estilos para campos válidos/inválidos */
+.campo input:valid {
+  border-color: #28a745;
+}
+
+.campo input:invalid {
+  border-color: #dc3545;
+}
+
+/* Transiciones suaves */
+.campo input,
+.btn-firmar,
+.btn-guardar,
+.btn-desbloquear,
+.btn-eliminar,
+.btn-imprimir,
+.btn-confirmar-firma,
+.btn-cancelar-firma {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ===== REDISENO INSTITUCIONAL ORDEN (ESTILO HOJA DE VIDA) ===== */
+.factura {
+  position: relative;
+  max-width: 980px;
+  border-radius: 14px;
+  border: 1px solid #d4def2;
+  box-shadow: 0 16px 30px rgba(2, 31, 89, 0.18);
+  color: #1e293b;
+}
+
+.factura-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  min-width: 90px;
+  min-height: 36px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid #b8caec;
+  background: linear-gradient(135deg, #ffffff, #eaf2ff);
+  color: var(--brand-900);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0.35px;
+  cursor: pointer;
+  z-index: 5;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.factura-close-btn:hover {
+  background: linear-gradient(135deg, #ffffff, #dce9ff);
+  transform: scale(1.06);
+  box-shadow: 0 6px 18px rgba(2, 31, 89, 0.2);
+}
+
+.factura-header {
+  border: 2px solid var(--brand-900);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) 280px;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.empresa {
+  gap: 10px;
+}
+
+.empresa-datos h2 {
+  color: var(--brand-900);
+}
+
+.factura-info {
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--brand-bg);
+}
+
+.factura-titulo {
+  margin: 10px 0 16px;
+  border-bottom: 2px solid var(--brand-900);
+  color: var(--brand-900);
+}
+
+.factura .bloque {
+  background: var(--brand-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.factura .bloque h3 {
+  border-bottom: 1px solid var(--brand-tint-strong);
+  color: var(--brand-900);
+}
+
+.factura .grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.factura .grid p {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f4;
+  background: #ffffff;
+}
+
+.factura .grid strong {
+  min-width: 0;
+  color: var(--brand-900);
+}
+
+.factura .campo input,
+.factura .textarea {
+  border-color: #cad8f2;
+  border-radius: 8px;
+}
+
+.factura .campo input:focus,
+.factura .textarea:focus {
+  border-color: var(--brand-900);
+  box-shadow: 0 0 0 3px rgba(2, 48, 89, 0.12);
+}
+
+.factura .btn-firmar {
+  background: linear-gradient(135deg, var(--brand-900), var(--brand-800));
+}
+
+.factura .btn-guardar {
+  background: linear-gradient(135deg, var(--brand-900), var(--brand-700));
+}
+
+.factura .btn-imprimir {
+  background: linear-gradient(135deg, var(--brand-700), var(--brand-800));
+}
+
+.factura .btn-eliminar {
+  background: linear-gradient(135deg, #f21326, #b91c1c);
+}
+
+.legal-notice {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #881337;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.factura .legal-block {
+  border-color: #fecaca;
+  background: #fff5f5;
+}
+
+.legal-copy {
+  margin: 0;
+  color: #7f1d1d;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 768px) {
+  .factura-close-btn {
+    top: 8px;
+    right: 8px;
+  }
+
+  .modal-dialog-factura .factura {
+    padding-top: 52px;
+  }
+
+  .modal-dialog-factura .factura-close-btn {
+    top: 8px;
+    right: 8px;
+    min-width: 76px;
+    min-height: 34px;
+    font-size: 11px;
+  }
+
+  .factura-header {
+    grid-template-columns: 1fr;
+  }
+
+  .factura .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== MODAL RESPONSIVE HARDENING ===== */
+.signature-modal-overlay {
+  padding: clamp(10px, 2.4vw, 20px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.signature-modal-content,
+.unlock-modal-content {
+  width: min(520px, 100%);
+  max-height: calc(100svh - 20px);
+  margin: auto;
+}
+
+@media (max-width: 768px) {
+  .signature-modal-overlay {
+    align-items: flex-start;
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    padding-left: max(10px, env(safe-area-inset-left));
+  }
+
+  .signature-modal-content,
+  .unlock-modal-content {
+    width: 100%;
+    max-height: calc(100svh - 20px);
+    border-radius: 10px;
+  }
+
+  .signature-modal-header {
+    padding: 14px 16px;
+    gap: 8px;
+  }
+
+  .signature-modal-header h3 {
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
+  .signature-modal-body {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .signature-modal-content,
+  .unlock-modal-content {
+    max-height: calc(100svh - 12px);
+    border-radius: 9px;
+  }
+
+  .signature-modal-footer {
+    padding: 12px 14px;
+  }
+
+  .close-modal {
+    min-width: 82px;
+    min-height: 34px;
+  }
+}
+
+@media (min-width: 769px) and (max-height: 800px) {
+  .signature-modal-overlay {
+    align-items: flex-start;
+  }
+
+  .signature-modal-content,
+  .unlock-modal-content {
+    max-height: calc(100svh - 20px);
+  }
+}
+

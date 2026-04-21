@@ -1,0 +1,369 @@
+/* CONTENEDOR GENERAL */
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(242, 19, 38, 0.25), transparent 45%),
+    radial-gradient(circle at 82% 12%, rgba(2, 48, 89, 0.35), transparent 50%),
+    linear-gradient(135deg, #021F59 0%, #022873 42%, #023059 70%, #F2F2F2 100%);
+}
+
+/* LOGOS ARRIBA */
+.login-logos {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  margin-top: 40px;
+  flex-wrap: wrap;
+}
+
+.logo-asset-login {
+  height: 300px;
+}
+
+.logo-m5-login {
+  height: 200px;
+}
+
+/* TARJETA LOGIN/REGISTRO */
+.login-card {
+  margin: 40px auto;
+  background: linear-gradient(145deg, #F21326, #F23054);
+  padding: 40px;
+  border-radius: 30px;
+  width: 400px;
+  max-width: 90%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 10px 30px rgba(242, 19, 38, 0.28);
+  animation: fadeIn 0.5s ease-out;
+}
+
+.login-card h2 {
+  color: #ffeaea;
+  margin-bottom: 25px;
+  font-size: 28px;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* INPUTS */
+.login-card input {
+  width: 100%;
+  padding: 15px;
+  margin-bottom: 20px;
+  border-radius: 25px;
+  border: none;
+  outline: none;
+  font-size: 16px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.95);
+  transition: all 0.3s ease;
+}
+
+.login-card input:focus {
+  background: white;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+/* BOTÓN LOGIN PRINCIPAL */
+.login-card .btn-login {
+  width: 100%;
+  padding: 15px;
+  border-radius: 25px;
+  border: none;
+  background: var(--brand-900);
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 18px;
+  margin-top: 10px;
+  transition: all 0.3s ease;
+}
+
+.login-card .btn-login:hover {
+  background: var(--brand-800);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(2, 48, 89, 0.3);
+}
+
+.login-card button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.login-error {
+  margin: 0 0 15px;
+  color: #ffffff;
+  background: rgba(2, 48, 89, 0.6);
+  padding: 8px 12px;
+  border-radius: 12px;
+  width: 100%;
+  font-size: 14px;
+}
+
+/* FOOTER ABAJO */
+.login-footer {
+  background: var(--brand-900);
+  color: rgb(233, 233, 233);
+  padding: 15px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+}
+
+/* ICONOS REDES SOCIALES */
+.footer-redes i {
+  margin-left: 15px;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.footer-redes i:hover {
+  color: #F21326;
+  transform: scale(1.2);
+}
+
+/* ========== ESTILOS PARA REGISTRO ========== */
+
+/* INFO CLAVE REGISTRO */
+.register-info {
+  background: rgba(255, 255, 255, 0.9);
+  padding: 10px 15px;
+  border-radius: 15px;
+  margin-bottom: 20px;
+  color: var(--brand-900);
+  font-size: 14px;
+  font-weight: bold;
+  border: 2px dashed var(--brand-900);
+}
+
+/* BOTONES REGISTRO/CANCELAR */
+.register-buttons {
+  display: flex;
+  gap: 15px;
+  margin-top: 20px;
+  width: 100%;
+}
+
+.btn-register, .btn-cancel {
+  flex: 1;
+  padding: 15px;
+  border-radius: 25px;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.btn-register {
+  background: #2ecc71;
+  color: #000;
+}
+
+.btn-register:hover {
+  background: #27ae60;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(46, 204, 113, 0.3);
+}
+
+.btn-cancel {
+  background: #e74c3c;
+  color: #000;
+}
+
+.btn-cancel:hover {
+  background: #c0392b;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(231, 76, 60, 0.3);
+}
+
+/* ENLACES LOGIN/REGISTRO */
+.login-footer-links {
+  margin-top: 25px;
+  text-align: center;
+  color: rgb(255, 255, 255);
+  font-size: 16px;
+}
+
+.register-link, .login-link {
+  color: var(--brand-900);
+  cursor: pointer;
+  font-weight: bold;
+  text-decoration: underline;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 5px 10px;
+  border-radius: 10px;
+  margin-left: 5px;
+  transition: all 0.3s ease;
+}
+
+.register-link:hover, .login-link:hover {
+  color: #F21326;
+  background: white;
+  text-decoration: none;
+}
+
+/* ESTILOS ESPECÍFICOS PARA FORMULARIO DE REGISTRO */
+.login-card.register-form {
+  background: linear-gradient(145deg, #F21326, #F23054);
+}
+
+/* PLACEHOLDER PERSONALIZADO */
+.login-card input::placeholder {
+  color: #f7f7f7;
+  opacity: 0.8;
+}
+
+/* MENSAJES DE ERROR (si los agregas después) */
+.error-message {
+  background: rgba(231, 76, 60, 0.9);
+  color: #000;
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+.success-message {
+  background: rgba(46, 204, 113, 0.9);
+  color: #000;
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+/* ========== RESPONSIVE ========== */
+
+/* TABLET */
+@media (max-width: 992px) {
+  .logo-asset-login {
+    height: 250px;
+  }
+
+  .logo-m5-login {
+    height: 180px;
+  }
+
+  .login-card {
+    width: 350px;
+    padding: 35px;
+  }
+}
+
+/* MOBILE */
+@media (max-width: 768px) {
+  .login-logos {
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
+  }
+
+  .logo-asset-login {
+    height: 200px;
+  }
+
+  .logo-m5-login {
+    height: 140px;
+  }
+
+  .login-card {
+    width: 90%;
+    padding: 30px 25px;
+    margin: 20px auto;
+    border-radius: 20px;
+  }
+
+  .login-card h2 {
+    font-size: 24px;
+  }
+
+  .login-card input {
+    padding: 12px;
+    font-size: 15px;
+  }
+
+  .login-card .btn-login,
+  .btn-register,
+  .btn-cancel {
+    padding: 12px;
+    font-size: 15px;
+  }
+
+  .register-buttons {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .login-footer {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+    padding: 15px 20px;
+  }
+
+  .footer-redes {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+  }
+
+  .footer-redes i {
+    margin-left: 0;
+  }
+}
+
+/* MOBILE PEQUEÑO */
+@media (max-width: 480px) {
+  .logo-asset-login {
+    height: 160px;
+  }
+
+  .logo-m5-login {
+    height: 110px;
+  }
+
+  .login-card {
+    padding: 25px 20px;
+    border-radius: 15px;
+  }
+
+  .login-card h2 {
+    font-size: 22px;
+    margin-bottom: 20px;
+  }
+
+  .login-card input {
+    padding: 10px 15px;
+    margin-bottom: 15px;
+  }
+
+  .login-footer-links {
+    font-size: 14px;
+  }
+
+  .register-link, .login-link {
+    display: block;
+    margin: 5px auto;
+    width: fit-content;
+  }
+}
+
+/* ANIMACIONES */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
