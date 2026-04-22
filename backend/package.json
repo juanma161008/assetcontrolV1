@@ -6,6 +6,7 @@
     "dev": "nodemon src/index.js",
     "create-admin": "node scripts/create-admin.js",
     "test": "set NODE_ENV=test&& vitest run --coverage && node scripts/print-coverage-summary.mjs",
+    "test:coverage": "npm run test",
     "test:watch": "vitest",
     "sonar": "sonar-scanner",
     "test:sonar": "npm run test && npm run sonar",

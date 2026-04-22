@@ -15,6 +15,8 @@ The repository is organized by responsibility so each layer stays focused:
 - `frontend/src/components` holds shared UI pieces.
 - `frontend/src/domain`, `frontend/src/services`, `frontend/src/utils` and `frontend/src/styles` keep frontend logic separated by concern.
 
+For a module-by-module technical breakdown of the codebase, see `docs/arquitectura-tecnica.md`.
+
 ## Repository Hygiene
 
 The root `.gitignore` excludes generated and local-only artifacts such as `node_modules`, `dist`, `coverage`, `.scannerwork`, `tmp` and exported `.pptx` files.

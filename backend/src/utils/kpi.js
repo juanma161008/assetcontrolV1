@@ -1,4 +1,4 @@
-const parseDate = (value) => {
+export const parseDate = (value) => {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
@@ -7,7 +7,7 @@ const parseDate = (value) => {
 const getFailureEvents = (historial = []) =>
   historial.filter((item) => String(item.tipo || "").toLowerCase().includes("correctivo"));
 
-const getHoursFromMaintenance = (item) => {
+export const getHoursFromMaintenance = (item) => {
   const candidates = [
     item.duracion_horas,
     item.horas_trabajo,
@@ -58,7 +58,7 @@ export const calculateAssetKpis = (historial = []) => {
   }
 
   let disponibilidad = null;
-  if (mtbfDays && mttrHours) {
+  if (mtbfDays !== null && mttrHours !== null) {
     const mtbfHours = mtbfDays * 24;
     disponibilidad = (mtbfHours / (mtbfHours + mttrHours)) * 100;
   }
@@ -72,13 +72,17 @@ export const calculateAssetKpis = (historial = []) => {
     oee = (disponibilidad * rendimiento * calidad) / 10000;
   }
 
-  const round = (value) => (value === null ? null : Number(value.toFixed(2)));
+  const round = (value) => Number(value.toFixed(2));
 
+  // Compatibilidad con tests: devolver métricas explícitas
   return {
-    mtbf: round(mtbfDays),
-    mttr: round(mttrHours),
-    disponibilidad: round(disponibilidad),
-    oee: round(oee),
+    mtbfDays: mtbfDays ?? null,
+    mttrHours: mttrHours ?? null,
+    disponibilidad: disponibilidad === null ? null : round(disponibilidad),
+    oee: oee === null ? null : round(oee),
+    preventivos: preventivos.length,
+    fallas: failures.length,
+    finalizados: finalizados.length,
     baseMantenimientos: ordered.length
   };
 };
@@ -109,4 +113,3 @@ export const formatPeriodo = (year, monthIndex) => {
   const month = String(monthIndex + 1).padStart(2, "0");
   return `${year}-${month}`;
 };
-

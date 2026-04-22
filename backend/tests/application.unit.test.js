@@ -97,6 +97,18 @@ describe("Application use cases", () => {
     );
   });
 
+  it("CrearMantenimiento rechaza cuando no hay activo ni tipo especial", async () => {
+    const useCase = new CrearMantenimiento(
+      { create: vi.fn() },
+      { findById: vi.fn() },
+      { execute: vi.fn() }
+    );
+
+    await expect(useCase.execute({ descripcion: "Sin activo" }, 3)).rejects.toThrow(
+      "Activo no existe"
+    );
+  });
+
   it("CrearMantenimiento valida activo_id y normaliza tecnico_id", async () => {
     const mantRepo = { create: vi.fn().mockResolvedValue({ id: 22 }) };
     const activoRepo = { findById: vi.fn().mockResolvedValue({ id: 2 }) };
@@ -412,6 +424,9 @@ describe("Application use cases", () => {
     await expect(useCase.execute({ mantenimientos: [] })).rejects.toThrow(
       "Debe incluir mantenimientos"
     );
+    await expect(useCase.execute({ mantenimientos: "no-array" })).rejects.toThrow(
+      "Debe incluir mantenimientos"
+    );
   });
 
   it("CrearOrden crea orden", async () => {
@@ -423,6 +438,22 @@ describe("Application use cases", () => {
 
     expect(repo.create).toHaveBeenCalledWith(payload);
     expect(result).toEqual({ id: 10 });
+  });
+
+  it("CrearOrden usa usuarioId como creador cuando no viene en el payload", async () => {
+    const repo = { create: vi.fn().mockResolvedValue({ id: 11 }) };
+    const useCase = new CrearOrden(repo);
+
+    const result = await useCase.execute({ mantenimientos: [2], estado: "Pendiente" }, 42);
+
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        creado_por: 42,
+        estado: "Pendiente",
+        mantenimientos: [2]
+      })
+    );
+    expect(result).toEqual({ id: 11 });
   });
 
   it("FirmarOrden delega firma", async () => {
@@ -483,6 +514,29 @@ describe("Application use cases", () => {
     await expect(useCaseAdmin.execute(1, 3, "x")).rejects.toThrow("No puedes resetear");
   });
 
+  it("ResetPasswordUseCase rechaza contrasenas debiles y funciona sin setDebeCambiarPassword", async () => {
+    const repoWeak = {
+      findById: vi.fn().mockResolvedValue({ id: 7, rol_id: 3 }),
+      updatePassword: vi.fn()
+    };
+    const useCaseWeak = new ResetPasswordUseCase(repoWeak, { hash: vi.fn() });
+    await expect(useCaseWeak.execute(1, 7, "abc")).rejects.toThrow(/al menos/i);
+    expect(repoWeak.updatePassword).not.toHaveBeenCalled();
+
+    const repo = {
+      findById: vi.fn().mockResolvedValue({ id: 8, rol_id: 3 }),
+      updatePassword: vi.fn().mockResolvedValue(undefined)
+    };
+    const hashService = { hash: vi.fn().mockResolvedValue("hashed-temp-2") };
+    const useCase = new ResetPasswordUseCase(repo, hashService);
+
+    const result = await useCase.execute(1, 8, "Temporal123!", false);
+
+    expect(hashService.hash).toHaveBeenCalledWith("Temporal123!");
+    expect(repo.updatePassword).toHaveBeenCalledWith(8, "hashed-temp-2");
+    expect(result.message).toContain("reseteada");
+  });
+
   it("LoginUseCase valida email/password requeridos y privilegio admin", async () => {
     const useCase = new LoginUseCase(
       {
@@ -529,6 +583,123 @@ describe("Application use cases", () => {
     expect(result.debe_cambiar_password).toBe(true);
   });
 
+  it("LoginUseCase usa compare fallback y tolera errores en permisos y entidades", async () => {
+    const useCase = new LoginUseCase(
+      {
+        findByEmail: vi.fn().mockResolvedValue({
+          id: 6,
+          nombre: "Fallback",
+          email: "fallback@x.com",
+          password: "hash",
+          rol_id: 4
+        }),
+        getDebeCambiarPassword: vi.fn().mockRejectedValue(new Error("db")),
+        getEntidadesByUsuario: vi.fn().mockResolvedValue([{ id: 1 }, { id: 2 }])
+      },
+      {
+        getPermisosByRol: vi.fn().mockResolvedValue(["VER_ACTIVOS"]),
+        getPermisosByUsuario: vi.fn().mockRejectedValue(new Error("db"))
+      },
+      { compare: vi.fn().mockResolvedValue(true) }
+    );
+
+    const result = await useCase.execute("fallback@x.com", "123");
+
+    expect(result.permisos).toEqual(["VER_ACTIVOS"]);
+    expect(result.entidades_asignadas).toEqual([{ id: 1 }, { id: 2 }]);
+    expect(result.debe_cambiar_password).toBeUndefined();
+  });
+
+  it("LoginUseCase rechaza cuando no hay compareHash ni compare", async () => {
+    const useCase = new LoginUseCase(
+      {
+        findByEmail: vi.fn().mockResolvedValue({
+          id: 9,
+          nombre: "SinHash",
+          email: "sinhash@x.com",
+          password: "hash",
+          rol_id: 2
+        })
+      },
+      null,
+      {}
+    );
+
+    await expect(useCase.execute("sinhash@x.com", "123")).rejects.toThrow(
+      "Contrase"
+    );
+  });
+
+  it("LoginUseCase tolera error al consultar entidades asignadas", async () => {
+    const useCase = new LoginUseCase(
+      {
+        findByEmail: vi.fn().mockResolvedValue({
+          id: 7,
+          nombre: "Errores",
+          email: "errores@x.com",
+          password: "hash",
+          rol_id: 2
+        }),
+        getDebeCambiarPassword: vi.fn().mockResolvedValue(false),
+        getEntidadesByUsuario: vi.fn().mockRejectedValue(new Error("db"))
+      },
+      {
+        getPermisosByRol: vi.fn().mockResolvedValue(["VER_ACTIVOS"])
+      },
+      { compare: vi.fn().mockResolvedValue(true) }
+    );
+
+    const result = await useCase.execute("errores@x.com", "123");
+
+    expect(result.permisos).toEqual(["VER_ACTIVOS"]);
+    expect(result.entidades_asignadas).toEqual([]);
+  });
+
+  it("LoginUseCase funciona sin permisoRepo", async () => {
+    const useCase = new LoginUseCase(
+      {
+        findByEmail: vi.fn().mockResolvedValue({
+          id: 8,
+          nombre: "SinPermisos",
+          email: "sincorreo@x.com",
+          password: "hash",
+          rol_id: 2
+        }),
+        getEntidadesByUsuario: vi.fn().mockResolvedValue([{ id: 7 }])
+      },
+      null,
+      { compareHash: vi.fn().mockResolvedValue(true) }
+    );
+
+    const result = await useCase.execute("sincorreo@x.com", "123");
+
+    expect(result.permisos).toEqual([]);
+    expect(result.entidades_asignadas).toEqual([{ id: 7 }]);
+  });
+
+  it("LoginUseCase conserva permisos del rol cuando la parametrizacion personalizada esta vacia", async () => {
+    const useCase = new LoginUseCase(
+      {
+        findByEmail: vi.fn().mockResolvedValue({
+          id: 10,
+          nombre: "Rol",
+          email: "rol@x.com",
+          password: "hash",
+          rol_id: 4
+        })
+      },
+      {
+        getPermisosByRol: vi.fn().mockResolvedValue(["VER_ACTIVOS"]),
+        getPermisosByUsuario: vi.fn().mockResolvedValue([])
+      },
+      { compareHash: vi.fn().mockResolvedValue(true) }
+    );
+
+    const result = await useCase.execute("rol@x.com", "123");
+
+    expect(result.permisos).toEqual(["VER_ACTIVOS"]);
+  });
+
   it("RegistroUseCase valida estructura, nombre, email y password", async () => {
     const useCase = new RegistroUseCase(
       { findByEmail: vi.fn().mockResolvedValue(null), create: vi.fn() },
@@ -545,6 +716,17 @@ describe("Application use cases", () => {
     await expect(
       useCase.execute({ nombre: "Nombre", email: "ok@x.com", password: "123" })
     ).rejects.toThrow(/contraseña/i);
+  });
+
+  it("RegistroUseCase exige password cuando falta", async () => {
+    const useCase = new RegistroUseCase(
+      { findByEmail: vi.fn().mockResolvedValue(null), create: vi.fn() },
+      { hash: vi.fn() }
+    );
+
+    await expect(useCase.execute({ nombre: "Nombre", email: "ok@x.com" })).rejects.toThrow(
+      "Contrase"
+    );
   });
 
   it("RegistrarLog normaliza payload en execute", async () => {
@@ -583,6 +765,51 @@ describe("Application use cases", () => {
       accion: "ACCION_DESCONOCIDA",
       entidad: "SISTEMA"
     });
+
+    expect(
+      useCase.normalizePayload({
+        userId: 9,
+        modulo: "MODULO_X",
+        entidadId: 77,
+        detalles: { test: 1 },
+        ip: "127.0.0.1"
+      })
+    ).toMatchObject({
+      usuario_id: 9,
+      accion: "ACCION_DESCONOCIDA",
+      entidad: "MODULO_X",
+      entidad_id: 77,
+      despues: { test: 1 },
+      ip: "127.0.0.1"
+    });
+
+    expect(
+      useCase.normalizePayload({
+        usuario_id: 3,
+        accion: "ACCION_Z",
+        entidad: "MODULO_Z",
+        entidad_id: 88
+      })
+    ).toMatchObject({
+      usuario_id: 3,
+      accion: "ACCION_Z",
+      entidad: "MODULO_Z",
+      entidad_id: 88
+    });
+
+    expect(
+      useCase.normalizePayload({
+        accion: "ACCION_DEFAULT"
+      })
+    ).toMatchObject({
+      usuario_id: null,
+      accion: "ACCION_DEFAULT",
+      entidad: "SISTEMA",
+      entidad_id: null,
+      antes: null,
+      despues: null,
+      ip: null
+    });
   });
 
   it("EditarEntidad valida reglas de actualizacion", async () => {
@@ -618,6 +845,23 @@ describe("Application use cases", () => {
     );
   });
 
+  it("EditarEntidad salta validacion de nombre y no registra log sin usuario", async () => {
+    const repo = {
+      findById: vi.fn().mockResolvedValue({ id: 6, nombre: "A", tipo: "T", direccion: "D" }),
+      findByNombreNormalized: vi.fn().mockResolvedValue(null),
+      update: vi.fn().mockResolvedValue({ id: 6, nombre: "A", tipo: "T", direccion: "D2" })
+    };
+    const logUseCase = { execute: vi.fn().mockResolvedValue(undefined) };
+    const useCase = new EditarEntidad(repo, logUseCase);
+
+    const result = await useCase.execute(6, { direccion: "D2" });
+
+    expect(repo.findByNombreNormalized).not.toHaveBeenCalled();
+    expect(logUseCase.execute).not.toHaveBeenCalled();
+    expect(repo.update).toHaveBeenCalledWith(6, { direccion: "D2" });
+    expect(result).toEqual({ id: 6, nombre: "A", tipo: "T", direccion: "D2" });
+  });
+
   it("EliminarEntidad y ObtenerEntidad validan existencia", async () => {
     const repo = {
       findById: vi.fn(),
@@ -646,6 +890,21 @@ describe("Application use cases", () => {
     expect(logUseCase.execute).toHaveBeenCalledWith(
       expect.objectContaining({ usuario_id: 10, accion: "ELIMINAR", entidad_id: 4 })
     );
+  });
+
+  it("EliminarEntidad omite log cuando no hay usuario", async () => {
+    const repo = {
+      findById: vi.fn().mockResolvedValue({ id: 7, nombre: "Ent", tipo: "Sede", direccion: "X" }),
+      delete: vi.fn().mockResolvedValue(undefined)
+    };
+    const logUseCase = { execute: vi.fn().mockResolvedValue(undefined) };
+    const useCase = new EliminarEntidad(repo, logUseCase);
+
+    const deleted = await useCase.execute(7);
+
+    expect(deleted).toBe(true);
+    expect(repo.delete).toHaveBeenCalledWith(7);
+    expect(logUseCase.execute).not.toHaveBeenCalled();
   });
 
   it("EnviarCorreo valida destinatarios, asunto y contenido", async () => {

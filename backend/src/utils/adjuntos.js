@@ -8,7 +8,7 @@ const ALLOWED_MIME = new Set([
   "image/webp"
 ]);
 
-const estimateBase64Bytes = (dataUrl = "") => {
+export const estimateBase64Bytes = (dataUrl = "") => {
   const parts = String(dataUrl || "").split(",");
   if (parts.length < 2) return 0;
   const base64 = parts[1] || "";
@@ -57,4 +57,3 @@ export const ADJUNTOS_LIMITS = {
   maxAdjuntos: MAX_ADJUNTOS,
   maxBytes: MAX_ADJUNTO_BYTES
 };
-

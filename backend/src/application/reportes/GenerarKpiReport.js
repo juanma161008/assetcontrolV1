@@ -1,11 +1,9 @@
+
 import MantenimientoPgRepository from "../../infrastructure/repositories/MantenimientoPgRepository.js";
 import ActivoPgRepository from "../../infrastructure/repositories/ActivoPgRepository.js";
 import { aggregateKpis, calculateAssetKpis, filterByPeriod, formatPeriodo } from "../../utils/kpi.js";
 
-const repoMantenimiento = new MantenimientoPgRepository();
-const repoActivo = new ActivoPgRepository();
-
-const buildMaintenanceByAsset = (mantenimientos = []) => {
+export const buildMaintenanceByAsset = (mantenimientos = []) => {
   const map = new Map();
   (Array.isArray(mantenimientos) ? mantenimientos : []).forEach((item) => {
     const key = Number(item.activo_id);
@@ -18,7 +16,13 @@ const buildMaintenanceByAsset = (mantenimientos = []) => {
   return map;
 };
 
-export const buildKpiReport = async ({ year, monthIndex } = {}) => {
+export const buildKpiReport = async (
+  { year, monthIndex } = {},
+  {
+    repoActivo = new ActivoPgRepository(),
+    repoMantenimiento = new MantenimientoPgRepository()
+  } = {}
+) => {
   const now = new Date();
   const reportYear = Number.isInteger(year) ? year : now.getFullYear();
   const reportMonth = Number.isInteger(monthIndex) ? monthIndex : now.getMonth();
@@ -49,8 +53,7 @@ export const buildKpiReport = async ({ year, monthIndex } = {}) => {
 
   const today = new Date();
   const backlog = filteredMantenimientos.filter((item) => {
-    const fecha = new Date(item.fecha || 0);
-    if (Number.isNaN(fecha.getTime())) return false;
+    const fecha = new Date(item.fecha);
     return fecha < today && String(item.estado || "").toLowerCase() !== "finalizado";
   }).length;
 
@@ -67,4 +70,3 @@ export const buildKpiReport = async ({ year, monthIndex } = {}) => {
     backlog
   };
 };
-
