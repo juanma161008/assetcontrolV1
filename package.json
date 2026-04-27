@@ -7,6 +7,7 @@
     "dev:full": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "generate:pptx:routes": "node scripts/generar-assetcontrol-rutas-pptx.mjs",
     "generate:pptx:compatible": "node scripts/generar-assetcontrol-ui-compatible.mjs",
+    "backup:db": "node scripts/backup-postgres-to-onedrive.mjs",
     "prod:up": "docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production up -d --build",
     "prod:down": "docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production down",
     "prod:logs": "docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production logs -f"

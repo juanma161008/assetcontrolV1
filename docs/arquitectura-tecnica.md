@@ -28,6 +28,7 @@ El `package.json` de la raiz define comandos para desarrollo y despliegue:
 - `npm run dev:full`: levanta ambos con `concurrently`.
 - `npm run generate:pptx:routes`: genera una presentacion con rutas.
 - `npm run generate:pptx:compatible`: genera una presentacion compatible con la UI.
+- `npm run backup:db`: exporta PostgreSQL a un dump que se guarda en una carpeta sincronizada o en `tmp/backups`.
 - `npm run prod:up`: inicia el stack productivo con Docker.
 - `npm run prod:down`: apaga el stack productivo.
 - `npm run prod:logs`: sigue los logs del stack productivo.
@@ -454,8 +455,9 @@ Flujo general:
 
 1. copiar `deploy/.env.production.example` a `deploy/.env.production`;
 2. completar dominio, correo, contrasena de base y JWT;
-3. ejecutar `npm run prod:up`;
-4. verificar logs con `npm run prod:logs`.
+3. instalar la tarea diaria de respaldo si quieres copias automaticas a Google Drive;
+4. ejecutar `npm run prod:up`;
+5. verificar logs con `npm run prod:logs`.
 
 ## 7. Calidad, pruebas y SonarQube
 

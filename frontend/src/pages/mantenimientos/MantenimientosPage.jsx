@@ -12,6 +12,7 @@ import { sendEmailNotification } from "../../services/notificacionService";
 import { buildDocumentEmailHtml, buildMaintenanceOrderHtml } from "../../utils/emailDocuments";
 import { buildMaintenancePdfReportHtml } from "../../utils/maintenanceReport";
 import { toProperCase } from "../../utils/formatters";
+import useAnimatedPresence from "../../hooks/useAnimatedPresence";
 import logoM5 from "../../assets/logos/logom5.png";
 import logoAssetControl from "../../assets/logos/logo-assetcontrol.png";
 import {
@@ -235,13 +236,13 @@ const getNumeroReporteLabel = (tipo = "") =>
     ? "Código de Punto de Red *"
     : isCronogramaTipo(tipo)
       ? "Área / Dependencia *"
-      : "Número de reporte *";
+      : "Número de reporte / consecutivo *";
 const getNumeroReporteHelp = (tipo = "") =>
   isPuntoRedTipo(tipo)
     ? "Usa el código alfanumérico del Punto de Red. Si lo dejas vacío, el sistema generará un PR.### automáticamente. Este registro se guarda sin activo asociado."
     : isCronogramaTipo(tipo)
       ? "Registra el área o dependencia para este cronograma. Este registro se guarda sin activo asociado."
-      : "Registra el número de reporte o ticket del mantenimiento.";
+      : "Se sugiere el siguiente consecutivo del historial. Puedes modificarlo antes de guardar.";
 const formatCategoriaLabel = (value = "") => {
   const normalized = normalizeCategoriaActivo(value);
   if (!normalized) return String(value || "").trim();
@@ -361,6 +362,36 @@ const obtenerSiguienteConsecutivo = (numeros = []) => {
   return siguiente;
 };
 
+const splitReportNumber = (value = "") => {
+  const source = String(value || "").trim();
+  if (!source) return null;
+
+  const matches = Array.from(source.matchAll(/\d+/g));
+  if (matches.length === 0) return null;
+
+  const lastMatch = matches[matches.length - 1];
+  const digits = lastMatch[0];
+  const index = Number.isInteger(lastMatch.index) ? lastMatch.index : source.lastIndexOf(digits);
+
+  return {
+    prefix: source.slice(0, index),
+    suffix: source.slice(index + digits.length),
+    number: Number(digits),
+    width: digits.length
+  };
+};
+
+const buildDefaultMaintenanceForm = (tecnico = DEFAULT_TECNICO) => ({
+  fecha: new Date().toISOString().split("T")[0],
+  numeroReporte: "",
+  activo: "",
+  tipo: "",
+  planificacion: "Programado",
+  tecnico,
+  descripcion: "",
+  cambioPartes: ""
+});
+
 const toTimestamp = (value) => {
   if (!value) return null;
 
@@ -470,7 +501,6 @@ const getCurrentMonthKey = () => {
 export default function MantenimientosPage({ selectedEntidadId }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const dialogRef = useRef(null);
   const importInputRef = useRef(null);
   const reportLogoCacheRef = useRef(null);
   const openFromQueryRef = useRef(false);
@@ -516,22 +546,40 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(() => isMobileViewport());
 
-  const dialogSupportsModal = useMemo(() => {
-    const browserWindow = getBrowserWindow();
-    return typeof browserWindow?.HTMLDialogElement?.prototype?.showModal === "function";
-  }, []);
-
-  const [form, setForm] = useState({
-    fecha: new Date().toISOString().split("T")[0],
-    numeroReporte: "",
-    activo: "",
-    tipo: "",
-    planificacion: "Programado",
-    tecnico: defaultTecnico,
-    descripcion: "",
-    cambioPartes: ""
-  });
+  const [form, setForm] = useState(() => buildDefaultMaintenanceForm(defaultTecnico));
+  const [doubleFormDrafts, setDoubleFormDrafts] = useState(null);
   const [activoInputNuevo, setActivoInputNuevo] = useState("");
+  const resetCreateModalState = useCallback(() => {
+    setForm(buildDefaultMaintenanceForm(defaultTecnico));
+    setActivoInputNuevo("");
+    setDoubleFormDrafts(null);
+    setIsCreating(false);
+  }, [defaultTecnico]);
+  const resetDetailModalState = useCallback(() => {
+    setModalMantenimiento(null);
+    setShowFacturaModal(false);
+    setError("");
+    setSuccess("");
+    setIsOrderLoading(false);
+    setIsSendingEmail(false);
+  }, []);
+  const createModalPresence = useAnimatedPresence(showCreateModal, 220, resetCreateModalState);
+  const detailModalPresence = useAnimatedPresence(showModal, 220, resetDetailModalState);
+  useEffect(() => {
+    const body = globalThis?.document?.body;
+    if (!body) return undefined;
+
+    const shouldLockBody = createModalPresence.isMounted || detailModalPresence.isMounted;
+    if (shouldLockBody) {
+      body.classList.add("modal-open");
+    } else {
+      body.classList.remove("modal-open");
+    }
+
+    return () => {
+      body.classList.remove("modal-open");
+    };
+  }, [createModalPresence.isMounted, detailModalPresence.isMounted]);
   const categoriaMenuLabel =
     categoriaMenu === MENU_ALL_CATEGORY ? "Todos los mantenimientos" : formatCategoriaLabel(categoriaMenu);
   const shouldShowMantenimientoContent = Boolean(categoriaMenu);
@@ -872,6 +920,37 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     const siguiente = obtenerSiguienteConsecutivo(consecutivos);
     return `PR.${String(siguiente).padStart(3, "0")}`;
   }, [mantenimientos]);
+
+  const buildGeneralNumeroReporte = useCallback((offset = 0) => {
+    const source = sortMantenimientosByRecency(mantenimientos);
+    const prioritized = source.filter((item) => !isPuntoRedTipo(item.tipo) && !isCronogramaTipo(item.tipo));
+    const fallbackSource = prioritized.length ? prioritized : source;
+
+    for (const item of fallbackSource) {
+      const parts = splitReportNumber(getNumeroReporteMantenimiento(item));
+      if (!parts || !Number.isFinite(parts.number) || parts.number <= 0) {
+        continue;
+      }
+
+      const nextNumber = parts.number + 1 + offset;
+      return `${parts.prefix}${String(nextNumber).padStart(parts.width, "0")}${parts.suffix}`;
+    }
+
+    return `REP-${String(offset + 1).padStart(3, "0")}`;
+  }, [mantenimientos]);
+
+  const buildDoubleFormDrafts = useCallback(() => ({
+    preventivo: {
+      numeroReporte: buildGeneralNumeroReporte(0),
+      descripcion: "",
+      cambioPartes: ""
+    },
+    correctivo: {
+      numeroReporte: buildGeneralNumeroReporte(1),
+      descripcion: "",
+      cambioPartes: ""
+    }
+  }), [buildGeneralNumeroReporte]);
 
   const equipoLabelModal = useMemo(() => {
     if (!modalMantenimiento) return "";
@@ -1362,26 +1441,39 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     const { name, value } = e.target;
     const nextValue = value;
     const normalizedValue = name === "tipo" ? normalizePuntoRedTipo(nextValue) : nextValue;
+    const isDoubleSelected = name === "tipo" && isTipoDoble(normalizedValue);
+    const isSpecialTipo = name === "tipo" && (isPuntoRedTipo(normalizedValue) || isCronogramaTipo(normalizedValue));
 
     setForm((prev) => {
       const nextForm = {
         ...prev,
         [name]: normalizedValue,
-        ...(name === "tipo" && (isPuntoRedTipo(normalizedValue) || isCronogramaTipo(normalizedValue)) ? { activo: "" } : {})
+        ...(isSpecialTipo ? { activo: "" } : {})
       };
 
-      if (
-        name === "tipo" &&
-        isPuntoRedTipo(normalizedValue) &&
-        !String(prev.numeroReporte || "").trim()
-      ) {
-        nextForm.numeroReporte = buildPuntoRedNumeroReporte();
+      if (name === "tipo") {
+        const previousNumeroReporte = String(prev.numeroReporte || "").trim();
+        if (isDoubleSelected) {
+          nextForm.numeroReporte = "";
+        } else if (isPuntoRedTipo(normalizedValue) && !previousNumeroReporte) {
+          nextForm.numeroReporte = buildPuntoRedNumeroReporte();
+        } else if (!isSpecialTipo && !previousNumeroReporte) {
+          nextForm.numeroReporte = buildGeneralNumeroReporte();
+        }
       }
 
       return nextForm;
     });
 
-    if (name === "tipo" && (isPuntoRedTipo(normalizedValue) || isCronogramaTipo(normalizedValue))) {
+    if (name === "tipo") {
+      if (isDoubleSelected) {
+        setDoubleFormDrafts(buildDoubleFormDrafts());
+      } else {
+        setDoubleFormDrafts(null);
+      }
+    }
+
+    if (name === "tipo" && (isSpecialTipo || isDoubleSelected)) {
       setActivoInputNuevo("");
     }
   };
@@ -1430,14 +1522,10 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     }
 
     const activoEsObligatorio = requiresActivoForTipo(form.tipo);
-    let numeroReporteValue = String(form.numeroReporte || "").trim();
+    const isDoubleSelected = isTipoDoble(form.tipo);
+    const activoId = form.activo ? Number(form.activo) : null;
 
-    if (isPuntoRedTipo(form.tipo) && !numeroReporteValue) {
-      numeroReporteValue = buildPuntoRedNumeroReporte();
-      setForm((prev) => ({ ...prev, numeroReporte: numeroReporteValue }));
-    }
-
-    if (!form.fecha || !numeroReporteValue || !form.tipo || !form.planificacion || (activoEsObligatorio && !form.activo)) {
+    if (!form.fecha || !form.tipo || !form.planificacion || (activoEsObligatorio && !form.activo)) {
       setError("Campos obligatorios incompletos");
       setIsCreating(false);
       return;
@@ -1452,13 +1540,6 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       return;
     }
 
-    if (isPuntoRedTipo(form.tipo) && !matchesAlphanumericReference(numeroReporteValue)) {
-      setError("Para Punto de Red debes registrar una referencia alfanumérica válida.");
-      setIsCreating(false);
-      return;
-    }
-
-    const activoId = form.activo ? Number(form.activo) : null;
     const fechaKey = toDateKey(form.fecha);
     if (activoId && fechaKey) {
       const duplicados = (Array.isArray(mantenimientos) ? mantenimientos : []).filter((item) => {
@@ -1496,53 +1577,108 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       const tecnicoId = resolveTecnicoIdByNombre(tecnicoNombre);
       const basePayload = {
         fecha: form.fecha,
-        numeroReporte: numeroReporteValue,
         activo_id: activoEsObligatorio ? Number(form.activo) : null,
         tecnico: tecnicoNombre,
         tecnico_id: tecnicoId,
-        descripcion: form.descripcion,
-        cambio_partes: String(form.cambioPartes || "").trim(),
         estado: estadoInicial
       };
 
-      const tiposAGuardar = isTipoDoble(form.tipo)
-        ? ["Preventivo", "Correctivo"]
-        : [normalizePuntoRedTipo(form.tipo)];
-      const creados = [];
+      if (isDoubleSelected) {
+        const drafts = doubleFormDrafts || buildDoubleFormDrafts();
+        const preventivoNumero = String(drafts?.preventivo?.numeroReporte || "").trim() || buildGeneralNumeroReporte(0);
+        const correctivoNumero = String(drafts?.correctivo?.numeroReporte || "").trim() || buildGeneralNumeroReporte(1);
+        const preventivoDescripcion = String(drafts?.preventivo?.descripcion || form.descripcion || "").trim();
+        const correctivoDescripcion = String(drafts?.correctivo?.descripcion || form.descripcion || "").trim();
+        const preventivoCambioPartes = String(drafts?.preventivo?.cambioPartes || form.cambioPartes || "").trim();
+        const correctivoCambioPartes = String(drafts?.correctivo?.cambioPartes || form.cambioPartes || "").trim();
 
-      for (const tipo of tiposAGuardar) {
-        const creado = await mantenimientoService.create({ ...basePayload, tipo });
-        creados.push(creado);
+        if (!preventivoNumero || !correctivoNumero) {
+          setError("Los dos formularios requieren número de reporte.");
+          setIsCreating(false);
+          return;
+        }
+
+        const creados = [];
+        for (const payload of [
+          {
+            ...basePayload,
+            tipo: "Preventivo",
+            numeroReporte: preventivoNumero,
+            descripcion: preventivoDescripcion,
+            cambio_partes: preventivoCambioPartes
+          },
+          {
+            ...basePayload,
+            tipo: "Correctivo",
+            numeroReporte: correctivoNumero,
+            descripcion: correctivoDescripcion,
+            cambio_partes: correctivoCambioPartes
+          }
+        ]) {
+          const creado = await mantenimientoService.create(payload);
+          creados.push(creado);
+        }
+
+        clearTimeout(backlogTimer);
+        const createdIds = creados
+          .map((item) => item?.id)
+          .filter((id) => id !== null && id !== undefined);
+        const createdLabel = createdIds.length > 0 ? createdIds.join(" y ") : "-";
+        setSuccess(
+          isAdmin
+            ? `Mantenimientos creados - ID ${createdLabel}`
+            : "Mantenimientos creados correctamente"
+        );
+        setToast({
+          tone: "success",
+          message: isAdmin
+            ? `Mantenimientos guardados correctamente (ID ${createdLabel})`
+            : "Mantenimientos guardados correctamente"
+        });
+        setShowCreateModal(false);
+        await cargarMantenimientos();
+        return;
       }
-      clearTimeout(backlogTimer);
 
-      const createdIds = creados
-        .map((item) => item?.id)
-        .filter((id) => id !== null && id !== undefined);
-      const createdLabel = createdIds.length > 0 ? createdIds.join(" y ") : "-";
-      const plural = creados.length > 1;
-      setSuccess(
-        isAdmin
-          ? `Mantenimiento${plural ? "s" : ""} creado${plural ? "s" : ""} - ID ${createdLabel}`
-          : `Mantenimiento${plural ? "s" : ""} creado${plural ? "s" : ""}`
-      );
+      let numeroReporteValue = String(form.numeroReporte || "").trim();
+      if (isPuntoRedTipo(form.tipo) && !numeroReporteValue) {
+        numeroReporteValue = buildPuntoRedNumeroReporte();
+        setForm((prev) => ({ ...prev, numeroReporte: numeroReporteValue }));
+      } else if (!isCronogramaTipo(form.tipo) && !numeroReporteValue) {
+        numeroReporteValue = buildGeneralNumeroReporte();
+        setForm((prev) => ({ ...prev, numeroReporte: numeroReporteValue }));
+      }
+
+      if (!numeroReporteValue) {
+        setError("Campos obligatorios incompletos");
+        setIsCreating(false);
+        return;
+      }
+
+      if (isPuntoRedTipo(form.tipo) && !matchesAlphanumericReference(numeroReporteValue)) {
+        setError("Para Punto de Red debes registrar una referencia alfanumérica válida.");
+        setIsCreating(false);
+        return;
+      }
+
+      const payload = {
+        ...basePayload,
+        tipo: normalizePuntoRedTipo(form.tipo),
+        numeroReporte: numeroReporteValue,
+        descripcion: String(form.descripcion || "").trim(),
+        cambio_partes: String(form.cambioPartes || "").trim()
+      };
+
+      const creado = await mantenimientoService.create(payload);
+      clearTimeout(backlogTimer);
+      const createdLabel = creado?.id ?? "-";
+      setSuccess(isAdmin ? `Mantenimiento creado - ID ${createdLabel}` : "Mantenimiento creado");
       setToast({
         tone: "success",
         message: isAdmin
-          ? `Mantenimiento${plural ? "s" : ""} guardado${plural ? "s" : ""} correctamente (ID ${createdLabel})`
-          : `Mantenimiento${plural ? "s" : ""} guardado${plural ? "s" : ""} correctamente`
+          ? `Mantenimiento guardado correctamente (ID ${createdLabel})`
+          : "Mantenimiento guardado correctamente"
       });
-      setForm({
-        fecha: new Date().toISOString().split("T")[0],
-        numeroReporte: "",
-        activo: "",
-        tipo: "",
-        planificacion: "Programado",
-        tecnico: tecnicoOptions[0] || defaultTecnico,
-        descripcion: "",
-        cambioPartes: ""
-      });
-      setActivoInputNuevo("");
       setShowCreateModal(false);
       await cargarMantenimientos();
     } catch (err) {
@@ -1560,42 +1696,6 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
   };
 
-  const resetModalState = useCallback(() => {
-    setShowModal(false);
-    setShowFacturaModal(false);
-    setModalMantenimiento(null);
-    setError("");
-    setSuccess("");
-  }, []);
-
-  const openDialogSafely = useCallback(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    if (dialogSupportsModal && typeof dialog.showModal === "function") {
-      if (!dialog.open) {
-        dialog.showModal();
-      }
-      return;
-    }
-
-    dialog.setAttribute("open", "true");
-  }, [dialogSupportsModal]);
-
-  const closeDialogSafely = useCallback(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    if (dialogSupportsModal && typeof dialog.close === "function") {
-      if (dialog.open) {
-        dialog.close();
-      }
-      return;
-    }
-
-    dialog.removeAttribute("open");
-  }, [dialogSupportsModal]);
-
   const abrirModal = useCallback((m) => {
     if (!m) return;
     const tecnicoActual = formatTecnicoNombre(m.tecnico || "");
@@ -1608,13 +1708,12 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       cambio_partes: m.cambio_partes ?? m.cambioPartes ?? ""
     });
     setShowModal(true);
-    setTimeout(() => openDialogSafely(), 0);
-  }, [defaultTecnico, openDialogSafely, tecnicoOptions]);
+  }, [defaultTecnico, tecnicoOptions]);
 
-  const cerrarModal = () => {
-    closeDialogSafely();
-    resetModalState();
-  };
+  const cerrarModal = useCallback(() => {
+    setShowModal(false);
+    setShowFacturaModal(false);
+  }, []);
 
   useEffect(() => {
     if (openFromQueryRef.current) return;
@@ -2650,23 +2749,28 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   const openCreateModal = () => {
     setError("");
     setSuccess("");
-    setForm({
-      fecha: new Date().toISOString().split("T")[0],
-      numeroReporte: "",
-      activo: "",
-      tipo: "",
-      planificacion: "Programado",
-      tecnico: tecnicoOptions[0] || defaultTecnico,
-      descripcion: "",
-      cambioPartes: ""
-    });
+    setForm(buildDefaultMaintenanceForm(tecnicoOptions[0] || defaultTecnico));
     setActivoInputNuevo("");
+    setDoubleFormDrafts(null);
     setShowCreateModal(true);
   };
 
   const closeCreateModal = () => {
     setShowCreateModal(false);
   };
+
+  const updateDoubleDraftField = useCallback((draftKey, field, value) => {
+    setDoubleFormDrafts((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        [draftKey]: {
+          ...(prev[draftKey] || {}),
+          [field]: value
+        }
+      };
+    });
+  }, []);
 
   const maintenanceTypeOptions = useMemo(() => ([
     "Preventivo",
@@ -3226,10 +3330,11 @@ export default function MantenimientosPage({ selectedEntidadId }) {
         </>
       )}
 
-      {showCreateModal && hasPermission(currentUser, "CREAR_MANTENIMIENTO") && (
+      {createModalPresence.isMounted && hasPermission(currentUser, "CREAR_MANTENIMIENTO") && (
         <dialog
           open
           className="modal-overlay maintenance-create-overlay"
+          data-state={createModalPresence.phase}
           aria-labelledby="create-maintenance-title"
           aria-modal="true"
           onCancel={(event) => {
@@ -3244,6 +3349,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
         >
           <div
             className="modal-content modal-dialog maintenance-create-modal maintenance-create-dialog"
+            data-state={createModalPresence.phase}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="maintenance-modal-head">
@@ -3295,7 +3401,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                       </option>
                     ))}
                   </select>
-                  <small>La opcion "Preventivo + Correctivo" crea dos mantenimientos separados.</small>
+                  <small>La opción "Preventivo + Correctivo" abre dos formularios en la misma pantalla.</small>
                 </div>
                 <div className="maintenance-form-field">
                   <label htmlFor="create-mantenimiento-planificacion">Planificación</label>
@@ -3312,28 +3418,105 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                     ))}
                   </select>
                 </div>
-                <div className="maintenance-form-field maintenance-form-field-wide">
-                  <label htmlFor="create-mantenimiento-cambio-partes">Cambio de partes</label>
-                  <textarea
-                    id="create-mantenimiento-cambio-partes"
-                    name="cambioPartes"
-                    value={form.cambioPartes}
-                    onChange={handleChange}
-                    placeholder="Cambio de partes / repuestos instalados"
-                    aria-label="Cambio de partes"
-                  />
-                </div>
-                <div className="maintenance-form-field maintenance-form-field-wide">
-                  <label htmlFor="create-mantenimiento-descripcion">Descripción</label>
-                  <textarea
-                    id="create-mantenimiento-descripcion"
-                    name="descripcion"
-                    value={form.descripcion}
-                    onChange={handleChange}
-                    placeholder="Descripción"
-                    aria-label="Descripción"
-                  />
-                </div>
+                {isTipoDoble(form.tipo) ? (
+                  <>
+                    <div className="maintenance-dual-note">
+                      <strong>Modo doble activo.</strong>
+                      <span>Se crearán dos registros relacionados, uno preventivo y uno correctivo, en la misma pantalla.</span>
+                    </div>
+                    <div className="maintenance-dual-grid">
+                      {[
+                        { key: "preventivo", label: "Preventivo", hint: "Primer registro" },
+                        { key: "correctivo", label: "Correctivo", hint: "Segundo registro" }
+                      ].map((draftConfig) => {
+                        const draft = doubleFormDrafts?.[draftConfig.key] || {};
+                        return (
+                          <article key={`draft-${draftConfig.key}`} className={`maintenance-dual-card maintenance-dual-card-${draftConfig.key}`}>
+                            <div className="maintenance-dual-card-head">
+                              <div>
+                                <span>{draftConfig.label}</span>
+                                <small>{draftConfig.hint}</small>
+                              </div>
+                              <strong>{draft.numeroReporte ? draft.numeroReporte : "Sin consecutivo"}</strong>
+                            </div>
+                            <div className="maintenance-form-field">
+                              <label htmlFor={`create-mantenimiento-${draftConfig.key}-reporte`}>Número de reporte / consecutivo</label>
+                              <input
+                                id={`create-mantenimiento-${draftConfig.key}-reporte`}
+                                type="text"
+                                value={draft.numeroReporte || ""}
+                                onChange={(event) => updateDoubleDraftField(draftConfig.key, "numeroReporte", event.target.value)}
+                                placeholder="Consecutivo editable"
+                                aria-label={`Número de reporte ${draftConfig.label}`}
+                                required
+                              />
+                              <small>Puedes cambiarlo sin perder la sugerencia automática.</small>
+                            </div>
+                            <div className="maintenance-form-field">
+                              <label htmlFor={`create-mantenimiento-${draftConfig.key}-cambio`}>Cambio de partes</label>
+                              <textarea
+                                id={`create-mantenimiento-${draftConfig.key}-cambio`}
+                                value={draft.cambioPartes || ""}
+                                onChange={(event) => updateDoubleDraftField(draftConfig.key, "cambioPartes", event.target.value)}
+                                placeholder="Cambio de partes / repuestos instalados"
+                                aria-label={`Cambio de partes ${draftConfig.label}`}
+                              />
+                            </div>
+                            <div className="maintenance-form-field maintenance-form-field-wide">
+                              <label htmlFor={`create-mantenimiento-${draftConfig.key}-descripcion`}>Descripción</label>
+                              <textarea
+                                id={`create-mantenimiento-${draftConfig.key}-descripcion`}
+                                value={draft.descripcion || ""}
+                                onChange={(event) => updateDoubleDraftField(draftConfig.key, "descripcion", event.target.value)}
+                                placeholder={`Descripción ${draftConfig.label.toLowerCase()}`}
+                                aria-label={`Descripción ${draftConfig.label}`}
+                              />
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="maintenance-form-field">
+                      <label htmlFor="create-mantenimiento-reporte">{getNumeroReporteLabel(form.tipo)}</label>
+                      <input
+                        id="create-mantenimiento-reporte"
+                        type="text"
+                        name="numeroReporte"
+                        value={form.numeroReporte}
+                        onChange={handleChange}
+                        placeholder={getNumeroReporteLabel(form.tipo)}
+                        aria-label="Número de reporte"
+                        required
+                      />
+                      <small>{getNumeroReporteHelp(form.tipo)}</small>
+                    </div>
+                    <div className="maintenance-form-field maintenance-form-field-wide">
+                      <label htmlFor="create-mantenimiento-cambio-partes">Cambio de partes</label>
+                      <textarea
+                        id="create-mantenimiento-cambio-partes"
+                        name="cambioPartes"
+                        value={form.cambioPartes}
+                        onChange={handleChange}
+                        placeholder="Cambio de partes / repuestos instalados"
+                        aria-label="Cambio de partes"
+                      />
+                    </div>
+                    <div className="maintenance-form-field maintenance-form-field-wide">
+                      <label htmlFor="create-mantenimiento-descripcion">Descripción</label>
+                      <textarea
+                        id="create-mantenimiento-descripcion"
+                        name="descripcion"
+                        value={form.descripcion}
+                        onChange={handleChange}
+                        placeholder="Descripción"
+                        aria-label="Descripción"
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="form-mantenimiento-modal-actions">
                   <button type="submit" className="btn-submit" disabled={isCreating}>
                     {isCreating ? "Guardando..." : "Crear mantenimiento"}
@@ -3346,16 +3529,25 @@ export default function MantenimientosPage({ selectedEntidadId }) {
         </dialog>
       )}
 
-      {showModal && modalMantenimiento && (
-        <dialog
-          ref={dialogRef}
-          className={`modal-dialog ${showFacturaModal ? "modal-dialog-factura" : ""}`}
-          onClose={resetModalState}
-          onCancel={(event) => {
-            event.preventDefault();
-            cerrarModal();
+      {detailModalPresence.isMounted && modalMantenimiento && (
+        <div
+          className="modal-overlay maintenance-detail-overlay"
+          data-state={detailModalPresence.phase}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              cerrarModal();
+            }
           }}
         >
+          <dialog
+            className={`modal-dialog ${showFacturaModal ? "modal-dialog-factura" : ""}`}
+            open
+            data-state={detailModalPresence.phase}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="maintenance-detail-title"
+            onClick={(event) => event.stopPropagation()}
+          >
           {showFacturaModal ? (
             <FacturaMantenimiento
               activo={obtenerActivoMantenimiento(modalMantenimiento) || {}}
@@ -3379,22 +3571,17 @@ export default function MantenimientosPage({ selectedEntidadId }) {
             />
           ) : (
             <>
-              <div className="maintenance-modal-body">
+              <div className="maintenance-modal-body" data-state={detailModalPresence.phase}>
                 <div className="maintenance-modal-shell">
                   <div className="maintenance-modal-head">
                     <div>
-                      <h2>
+                      <h2 id="maintenance-detail-title">
                         Detalle de mantenimiento #
                         {obtenerConsecutivoMantenimiento(modalMantenimiento.id) || modalMantenimiento.id}
                       </h2>
                       <p>Edita datos del mantenimiento y genera la orden desde la factura oficial.</p>
                     </div>
-                    <button
-                      type="button"
-                      className="maintenance-modal-close"
-                      onClick={cerrarModal}
-                      aria-label="Cerrar modal"
-                    >
+                    <button type="button" className="maintenance-modal-close" onClick={cerrarModal} aria-label="Cerrar modal">
                       <svg
                         viewBox="0 0 24 24"
                         width="16"
@@ -3415,30 +3602,30 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                           ? "Activo asociado (opcional)"
                           : "Activo asociado"}
                       </label>
-                    <select
-                      id="detail-mantenimiento-activo"
-                      value={modalMantenimiento.activo_id || ""}
-                      onChange={(e) =>
-                        setModalMantenimiento({
-                          ...modalMantenimiento,
-                          activo_id: e.target.value ? Number(e.target.value) : null
-                        })
-                      }
-                    >
-                      <option value="">Selecciona un activo</option>
-                      {activosFiltradosPorEntidad.map((activo) => (
-                        <option key={activo.id} value={activo.id}>
-                          {etiquetaActivoOption(activo)}
-                        </option>
-                      ))}
-                    </select>
-                    {isPuntoRedTipo(modalMantenimiento.tipo) && (
-                      <small>Si este registro es un Punto de Red, puede quedar sin activo asociado.</small>
-                    )}
-                    {isCronogramaTipo(modalMantenimiento.tipo) && (
-                      <small>Los cronogramas generales se guardan sin activo asociado.</small>
-                    )}
-                  </div>
+                      <select
+                        id="detail-mantenimiento-activo"
+                        value={modalMantenimiento.activo_id || ""}
+                        onChange={(e) =>
+                          setModalMantenimiento({
+                            ...modalMantenimiento,
+                            activo_id: e.target.value ? Number(e.target.value) : null
+                          })
+                        }
+                      >
+                        <option value="">Selecciona un activo</option>
+                        {activosFiltradosPorEntidad.map((activo) => (
+                          <option key={activo.id} value={activo.id}>
+                            {etiquetaActivoOption(activo)}
+                          </option>
+                        ))}
+                      </select>
+                      {isPuntoRedTipo(modalMantenimiento.tipo) && (
+                        <small>Si este registro es un Punto de Red, puede quedar sin activo asociado.</small>
+                      )}
+                      {isCronogramaTipo(modalMantenimiento.tipo) && (
+                        <small>Los cronogramas generales se guardan sin activo asociado.</small>
+                      )}
+                    </div>
 
                   <div className="maintenance-field">
                     <label htmlFor="detail-mantenimiento-equipo">Tipo de equipo</label>
@@ -3596,7 +3783,8 @@ export default function MantenimientosPage({ selectedEntidadId }) {
               </div>
             </>
           )}
-        </dialog>
+          </dialog>
+        </div>
       )}
     </div>
   );

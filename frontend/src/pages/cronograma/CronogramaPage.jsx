@@ -171,6 +171,22 @@ const buildDateRange = (start, end) => {
   return days;
 };
 
+const getCurrentWeekRange = () => {
+  const now = new Date();
+  const start = new Date(now);
+  const dayOfWeek = start.getDay();
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+
+  start.setDate(start.getDate() + diffToMonday);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+
+  return { start, end };
+};
+
 const isSameDate = (dateA, dateB) => toDateKey(dateA) === toDateKey(dateB);
 
 const getEstadoClass = (estado = "") => {
@@ -194,6 +210,53 @@ const formatDateLabel = (value = "") => {
   if (!key) return String(value || "").trim();
   const [year, month, day] = key.split("-");
   return `${day}/${month}/${year}`;
+};
+
+const buildCronogramaDescription = ({
+  area = "",
+  dispositivos = "",
+  counts = {},
+  start = null,
+  end = null,
+  note = "",
+  entityLabel = ""
+} = {}) => {
+  const countParts = [
+    `Cómputo ${Number(counts.computo || 0)}`,
+    `Rack ${Number(counts.rack || 0)}`,
+    `Switch ${Number(counts.switch || 0)}`,
+    `Impresoras ${Number(counts.impresoras || 0)}`,
+    `Escáner ${Number(counts.escaner || 0)}`,
+    `Ergotrones ${Number(counts.ergotrones || 0)}`
+  ].join(", ");
+
+  return [
+    entityLabel ? `Entidad: ${String(entityLabel).trim()}` : "",
+    `Área: ${String(area || "").trim()}`,
+    String(dispositivos || "").trim() ? `Dispositivos: ${String(dispositivos || "").trim()}` : "",
+    `Cantidades: ${countParts}`,
+    start && end ? `Rango: ${formatDateLabel(start)} al ${formatDateLabel(end)}` : "",
+    String(note || "").trim() ? `Observación: ${String(note || "").trim()}` : ""
+  ]
+    .filter(Boolean)
+    .join(" | ");
+};
+
+const buildDefaultCronogramaForm = () => {
+  const { start, end } = getCurrentWeekRange();
+  return {
+    area: "",
+    fechaInicio: toDateKey(start),
+    fechaFin: toDateKey(end),
+    dispositivos: "",
+    computo: "",
+    rack: "",
+    switch: "",
+    impresoras: "",
+    escaner: "",
+    ergotrones: "",
+    notas: ""
+  };
 };
 
 const getCronogramaRangeLabel = (descripcion = "") => {

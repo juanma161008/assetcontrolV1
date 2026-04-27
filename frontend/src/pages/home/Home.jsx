@@ -8,6 +8,7 @@ import { getCurrentUser, isAuthenticated } from "../../services/authService";
 import logoAsset from "../../assets/logos/logo-assetcontrol.png";
 import { calculateAssetKpis, calculateLifecycle } from "../../utils/assetLifecycle";
 import { hasPermission } from "../../utils/permissions";
+import useAnimatedPresence from "../../hooks/useAnimatedPresence";
 
 const DEFAULT_STATS = {
   total: 0,
@@ -37,6 +38,7 @@ const PUNTO_RED_ALIASES = new Set([
 ].map((item) => normalizeSearchValue(item)));
 const isPuntoRedTipo = (value = "") => PUNTO_RED_ALIASES.has(normalizeSearchValue(value));
 const isCronogramaTipo = (value = "") => normalizeSearchValue(value) === "cronograma";
+const isOperationalMaintenance = (mantenimiento = {}) => !isCronogramaTipo(mantenimiento?.tipo);
 const getMantenimientoEstadoLabel = (mantenimiento = {}) => (
   isCronogramaTipo(mantenimiento?.tipo)
     ? "Programado"
@@ -150,6 +152,24 @@ export default function Home({ selectedEntidadId, selectedEntidadNombre }) {
   const [dashboardMode, setDashboardMode] = useState("compact");
   const [focusMetric, setFocusMetric] = useState("activos-total");
   const [weeklyFilter, setWeeklyFilter] = useState("pendiente");
+  const assetModalPresence = useAnimatedPresence(showAssetModal, 220, () => {
+    setSelectedAssetId(null);
+  });
+
+  useEffect(() => {
+    const body = globalThis?.document?.body;
+    if (!body) return undefined;
+
+    if (assetModalPresence.isMounted) {
+      body.classList.add("modal-open");
+    } else {
+      body.classList.remove("modal-open");
+    }
+
+    return () => {
+      body.classList.remove("modal-open");
+    };
+  }, [assetModalPresence.isMounted]);
 
   const formatActivoIdLabel = useCallback((activoId, fallback = "Activo") => {
     const parsed = Number(activoId);
@@ -165,7 +185,9 @@ export default function Home({ selectedEntidadId, selectedEntidadNombre }) {
 
   const getWeeklyPending = useCallback((activos, mantenimientos) => {
     const sourceActivos = Array.isArray(activos) ? activos : [];
-    const sourceMantenimientos = Array.isArray(mantenimientos) ? mantenimientos : [];
+    const sourceMantenimientos = (Array.isArray(mantenimientos) ? mantenimientos : []).filter(
+      (item) => isOperationalMaintenance(item)
+    );
     const activosById = new Map(sourceActivos.map((activo) => [Number(activo.id), activo]));
     const { start, end } = getCurrentWeekRange();
 
@@ -340,12 +362,15 @@ export default function Home({ selectedEntidadId, selectedEntidadNombre }) {
 
       const { activos, mantenimientos } = await cargarDatos();
       const filtrados = filtrarDatosPorEntidad(activos, mantenimientos);
-      const estadisticas = calcularEstadisticas(filtrados.activos, filtrados.mantenimientos);
-      const pendientesSemana = getWeeklyPending(filtrados.activos, filtrados.mantenimientos);
+      const mantenimientosOperativos = (Array.isArray(filtrados.mantenimientos) ? filtrados.mantenimientos : []).filter(
+        (item) => isOperationalMaintenance(item)
+      );
+      const estadisticas = calcularEstadisticas(filtrados.activos, mantenimientosOperativos);
+      const pendientesSemana = getWeeklyPending(filtrados.activos, mantenimientosOperativos);
 
       setStats(estadisticas);
       setDashboardActivos(filtrados.activos);
-      setDashboardMantenimientos(filtrados.mantenimientos);
+      setDashboardMantenimientos(mantenimientosOperativos);
       setWeeklyPending(pendientesSemana);
     } catch (err) {
       setError(err.message || "Error al cargar estadisticas");
@@ -1041,16 +1066,23 @@ export default function Home({ selectedEntidadId, selectedEntidadNombre }) {
         )}
       </div>
 
-      {showAssetModal && selectedDashboardAsset && typeof document !== "undefined" && createPortal(
+      {assetModalPresence.isMounted && selectedDashboardAsset && typeof document !== "undefined" && createPortal(
         <div
           className="asset-detail-modal-overlay"
+          data-state={assetModalPresence.phase}
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               closeAssetModal();
             }
           }}
         >
-          <div className="asset-detail-modal" role="dialog" aria-modal="true" aria-labelledby="dashboard-asset-title">
+          <div
+            className="asset-detail-modal"
+            data-state={assetModalPresence.phase}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dashboard-asset-title"
+          >
             <div className="asset-detail-head">
               <div>
                 <p className="focus-label">Equipo seleccionado</p>

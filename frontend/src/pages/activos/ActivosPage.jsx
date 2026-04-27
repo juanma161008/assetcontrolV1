@@ -3109,13 +3109,47 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
                   <td><span className={`estado-badge ${getEstadoClassName(item.estado)}`}>{item.estado || "-"}</span></td>
                   <td className="actions-cell">
                     {canEdit && (
-                      <button type="button" className="btn-edit" onClick={(event) => handleEdit(item, event)}>
-                        Editar
+                      <button
+                        type="button"
+                        className="btn-action-icon btn-action-edit"
+                        onClick={(event) => handleEdit(item, event)}
+                        title="Editar activo"
+                        aria-label="Editar activo"
+                      >
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
+                          <path
+                            d="M4 16.75V20h3.25L19.81 7.44a1.5 1.5 0 0 0 0-2.12l-1.13-1.13a1.5 1.5 0 0 0-2.12 0L4 16.75Z"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="m13.5 4.5 6 6"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                          />
+                        </svg>
                       </button>
                     )}
                     {canDelete && (
-                      <button type="button" className="btn-delete" onClick={(event) => handleDelete(item.id, event)}>
-                        Eliminar
+                      <button
+                        type="button"
+                        className="btn-action-icon btn-action-delete"
+                        onClick={(event) => handleDelete(item.id, event)}
+                        title="Eliminar activo"
+                        aria-label="Eliminar activo"
+                      >
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
+                          <path
+                            d="M4.5 7h15M9 7V5.75A1.75 1.75 0 0 1 10.75 4h2.5A1.75 1.75 0 0 1 15 5.75V7m-7.5 0 .6 11.25A1.5 1.5 0 0 0 9.6 19.75h4.8a1.5 1.5 0 0 0 1.5-1.5L16.5 7"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path d="M10 11v5M14 11v5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                        </svg>
                       </button>
                     )}
                     {!isAdmin && canRequestBaja && (
@@ -3130,13 +3164,29 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
                       ) : (
                         <button
                           type="button"
-                          className="btn-baja"
+                          className="btn-action-icon btn-action-baja"
                           onClick={(event) => {
                             event.stopPropagation();
                             openBajaModal(item);
                           }}
+                          title="Solicitar baja"
+                          aria-label="Solicitar baja"
                         >
-                          Solicitar baja
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
+                            <path
+                              d="M12 3.75 20.25 18H3.75L12 3.75Z"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinejoin="round"
+                            />
+                            <path d="M12 8.25v5.25" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                            <path
+                              d="M12 16.75h.01"
+                              stroke="currentColor"
+                              strokeWidth="2.2"
+                              strokeLinecap="round"
+                            />
+                          </svg>
                         </button>
                       )
                     )}

@@ -1040,6 +1040,7 @@ select.form-field {
   text-align: center;
   font-size: 12px;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .tabla-activos tbody tr:hover {
@@ -1086,6 +1087,10 @@ select.form-field {
   font-size: 10px;
   font-weight: 600;
   text-transform: none;
+  max-width: 100%;
+  line-height: 1.1;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .estado-disponible {
@@ -1189,7 +1194,11 @@ select.form-field {
 .actions-cell {
   display: flex;
   justify-content: center;
-  gap: 6px;
+  align-items: center;
+  gap: 4px 6px;
+  flex-wrap: wrap;
+  min-width: 110px;
+  padding-inline: 4px;
 }
 
 .btn-edit, .btn-delete {
@@ -1216,6 +1225,76 @@ select.form-field {
 .btn-edit:disabled, .btn-delete:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+.btn-action-icon {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid #dbe3f1;
+  background: #ffffff;
+  color: var(--brand-800);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.btn-action-icon:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
+}
+
+.btn-action-icon:focus-visible {
+  outline: 2px solid rgba(2, 48, 89, 0.35);
+  outline-offset: 2px;
+}
+
+.btn-action-icon:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-action-icon svg {
+  display: block;
+  pointer-events: none;
+}
+
+.btn-action-edit {
+  color: var(--brand-700);
+}
+
+.btn-action-edit:hover:not(:disabled) {
+  background: var(--brand-tint);
+  border-color: var(--brand-tint-strong);
+}
+
+.btn-action-delete {
+  color: #b91c1c;
+}
+
+.btn-action-delete:hover:not(:disabled) {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.btn-action-baja {
+  color: #b45309;
+}
+
+.btn-action-baja:hover:not(:disabled) {
+  background: #fff7ed;
+  border-color: #fed7aa;
 }
 
 /* ESTADOS DE CARGA Y SIN DATOS */
@@ -1714,12 +1793,15 @@ button:disabled {
   .actions-cell {
     flex-direction: column;
     gap: 4px;
+    min-width: 0;
+    padding-inline: 0;
   }
   
-  .btn-edit, .btn-delete {
-    min-width: 28px;
-    padding: 4px 6px;
-    font-size: 11px;
+  .btn-action-icon {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    min-height: 30px;
   }
 }
 

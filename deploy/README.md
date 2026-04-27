@@ -21,6 +21,9 @@ cp deploy/.env.production.example deploy/.env.production
 - `JWT_SECRET`
 - (Opcional) variables SMTP
 
+Si quieres usar Google Drive para los respaldos, crea una carpeta local y sincronizala con Google Drive for desktop. En tu caso, usa `G:\Mi unidad\Backup Assetcontrol` y guarda `BACKUP_DIR` y `PG_DUMP_PATH` en `backend/.env` para no tener que escribirlos cada vez.
+Si `pg_dump` no esta en el PATH, define `PG_DUMP_PATH` con la ruta completa al binario.
+
 ## 3) Levantar stack productivo
 
 ```bash
@@ -64,6 +67,30 @@ Actualizar con nueva version:
 docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production up -d --build
 ```
 
-## 6) Nota importante de datos
+## 6) Copia automatica diaria a Google Drive
+
+Si quieres que la copia sea automatica, usa Google Drive for desktop con la cuenta `microcinco-hmfs@gmail.com` y sincroniza la carpeta `G:\Mi unidad\Backup Assetcontrol`.
+
+Luego registra la tarea diaria:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-daily-backup.ps1 -BackupDir "G:\Mi unidad\Backup Assetcontrol" -BackupEnvFile "deploy/.env.production" -At "02:00"
+```
+
+La primera vez te pedira credenciales de Windows para guardar la tarea en el Programador de tareas.
+
+La tarea hace esto cada dia:
+- exporta PostgreSQL a un archivo `.sql`;
+- lo guarda en la carpeta local sincronizada;
+- Google Drive sube ese archivo automaticamente a tu cuenta.
+
+Si ya dejaste las variables en `backend/.env`, solo ejecuta:
+
+```bash
+npm run backup:db
+```
+
+## 7) Nota importante de datos
 
 Este despliegue **no crea tablas automaticamente**. Debes restaurar tu esquema/datos de PostgreSQL antes de usar la app en produccion.
+Google Drive debe usarse como destino del respaldo, no como carpeta de datos viva de PostgreSQL.
