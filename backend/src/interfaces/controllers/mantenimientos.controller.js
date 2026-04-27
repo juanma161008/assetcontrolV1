@@ -150,9 +150,13 @@ export async function listarMantenimientos(req, res) {
       return success(res, data);
     }
 
-    const filtrados = (Array.isArray(data) ? data : []).filter((item) =>
-      allowedEntityIds.includes(Number(item?.entidad_id))
-    );
+    const filtrados = (Array.isArray(data) ? data : []).filter((item) => {
+      const entidadId = Number(item?.entidad_id);
+      if (allowedEntityIds.includes(entidadId)) {
+        return true;
+      }
+      return isCronogramaTipo(item?.tipo);
+    });
     return success(res, filtrados);
   } catch (e) {
     return error(res, e.message);

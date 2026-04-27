@@ -265,6 +265,67 @@ const getCronogramaRangeLabel = (descripcion = "") => {
   return `${match[1]} al ${match[2]}`;
 };
 
+const getCronogramaRangeDates = (descripcion = "") => {
+  const match = CRONOGRAMA_RANGE_REGEX.exec(String(descripcion || ""));
+  if (!match) return null;
+
+  const start = parseDateValue(match[1]);
+  const end = parseDateValue(match[2]);
+  if (!start || !end) return null;
+
+  return { start, end };
+};
+
+const getCronogramaDateKeys = (mantenimiento = {}) => {
+  const baseKey = toDateKey(mantenimiento.fecha);
+  if (!baseKey) return [];
+
+  const checklistSource = mantenimiento?.checklist;
+  const checklist =
+    checklistSource && typeof checklistSource === "string"
+      ? (() => {
+          try {
+            return JSON.parse(checklistSource);
+          } catch {
+            return null;
+          }
+        })()
+      : checklistSource;
+  const isManualCronograma = Boolean(checklist?.manualCronograma);
+
+  if (!isCronogramaTipo(mantenimiento.tipo) || !isManualCronograma) {
+    return [baseKey];
+  }
+
+  const range =
+    checklist?.fechaInicio && checklist?.fechaFin
+      ? {
+          start: parseDateValue(checklist.fechaInicio),
+          end: parseDateValue(checklist.fechaFin)
+        }
+      : getCronogramaRangeDates(mantenimiento.descripcion);
+  if (!range || !range.start || !range.end) {
+    return [baseKey];
+  }
+
+  const { start, end } = range;
+  if (end < start) {
+    return [baseKey];
+  }
+
+  const keys = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const limit = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (cursor <= limit) {
+    const key = toDateKey(cursor);
+    if (key) {
+      keys.push(key);
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return keys.length > 0 ? keys : [baseKey];
+};
+
 const getCronogramaShortDescription = (descripcion = "") => {
   const source = String(descripcion || "").trim();
   if (!source) return "";
@@ -284,13 +345,14 @@ const getNumeroReporteMantenimiento = (mantenimiento = {}) =>
     ""
   ).trim();
 
-export default function CronogramaPage({ selectedEntidadId }) {
+export default function CronogramaPage({ selectedEntidadId, selectedEntidadNombre }) {
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
   const canCreate = hasPermission(currentUser, "CREAR_MANTENIMIENTO");
   const canEdit = hasPermission(currentUser, "EDITAR_MANTENIMIENTO");
   const canDelete = hasPermission(currentUser, "ELIMINAR_MANTENIMIENTO");
   const entidadActivaId = String(selectedEntidadId || "").trim();
+  const entidadActivaNombre = String(selectedEntidadNombre || "").trim();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [mantenimientos, setMantenimientos] = useState([]);
@@ -322,6 +384,11 @@ export default function CronogramaPage({ selectedEntidadId }) {
   const [sendingReminderId, setSendingReminderId] = useState(null);
   const [selectedMantenimiento, setSelectedMantenimiento] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [showManualCronogramaForm, setShowManualCronogramaForm] = useState(false);
+  const [manualCronogramaForm, setManualCronogramaForm] = useState(() => buildDefaultCronogramaForm());
+  const [manualCronogramaError, setManualCronogramaError] = useState("");
+  const [manualCronogramaInfo, setManualCronogramaInfo] = useState("");
+  const [isCreatingManualCronograma, setIsCreatingManualCronograma] = useState(false);
 
   const loadData = async () => {
     if (!isAuthenticated()) {
@@ -527,9 +594,12 @@ export default function CronogramaPage({ selectedEntidadId }) {
         return false;
       }
       if (entidadActivaId) {
-        const activo = activosById[String(mantenimiento.activo_id)];
-        if (String(activo.entidad_id || "") !== entidadActivaId) {
-          return false;
+        const activoId = mantenimiento.activo_id ?? mantenimiento.activoId ?? mantenimiento.activo;
+        if (activoId != null && activoId !== "") {
+          const activo = activosById[String(activoId)];
+          if (activo && String(activo.entidad_id || "") !== entidadActivaId) {
+            return false;
+          }
         }
       }
       return true;
@@ -539,14 +609,16 @@ export default function CronogramaPage({ selectedEntidadId }) {
   const eventsByDate = useMemo(() => {
     const map = {};
     for (const mantenimiento of filteredMantenimientos) {
-      const dateKey = toDateKey(mantenimiento.fecha);
-      if (!dateKey) {
+      const dateKeys = getCronogramaDateKeys(mantenimiento);
+      if (dateKeys.length === 0) {
         continue;
       }
-      if (!map[dateKey]) {
-        map[dateKey] = [];
+      for (const dateKey of dateKeys) {
+        if (!map[dateKey]) {
+          map[dateKey] = [];
+        }
+        map[dateKey].push(mantenimiento);
       }
-      map[dateKey].push(mantenimiento);
     }
     return map;
   }, [filteredMantenimientos]);
@@ -908,6 +980,113 @@ export default function CronogramaPage({ selectedEntidadId }) {
     setSelectedMantenimiento(null);
   };
 
+  const openManualCronogramaForm = () => {
+    setManualCronogramaError("");
+    setManualCronogramaInfo("");
+    setManualCronogramaForm(buildDefaultCronogramaForm());
+    setShowManualCronogramaForm(true);
+  };
+
+  const closeManualCronogramaForm = () => {
+    if (isCreatingManualCronograma) return;
+    setShowManualCronogramaForm(false);
+    setManualCronogramaError("");
+    setManualCronogramaInfo("");
+  };
+
+  const handleManualCronogramaChange = (event) => {
+    const { name, value } = event.target;
+    setManualCronogramaForm((prev) => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleManualCronogramaReset = () => {
+    setManualCronogramaForm(buildDefaultCronogramaForm());
+    setManualCronogramaError("");
+    setManualCronogramaInfo("");
+  };
+
+  const handleManualCronogramaSubmit = async (event) => {
+    event.preventDefault();
+    if (!canCreate) {
+      setManualCronogramaError("No tienes permiso para crear cronogramas.");
+      return;
+    }
+    if (isCreatingManualCronograma) return;
+
+    const area = String(manualCronogramaForm.area || "").trim();
+    const start = parseDateValue(manualCronogramaForm.fechaInicio);
+    const end = parseDateValue(manualCronogramaForm.fechaFin);
+    if (!area) {
+      setManualCronogramaError("Escribe el área o frente de trabajo.");
+      return;
+    }
+    if (!start || !end) {
+      setManualCronogramaError("Selecciona un rango de fechas válido.");
+      return;
+    }
+    if (end < start) {
+      setManualCronogramaError("La fecha final no puede ser anterior a la inicial.");
+      return;
+    }
+
+    const fechaInicioKey = toDateKey(start);
+    if (!fechaInicioKey) {
+      setManualCronogramaError("No se pudo interpretar la fecha de inicio.");
+      return;
+    }
+
+    const counts = {
+      computo: parseCount(manualCronogramaForm.computo),
+      rack: parseCount(manualCronogramaForm.rack),
+      switch: parseCount(manualCronogramaForm.switch),
+      impresoras: parseCount(manualCronogramaForm.impresoras),
+      escaner: parseCount(manualCronogramaForm.escaner),
+      ergotrones: parseCount(manualCronogramaForm.ergotrones)
+    };
+    const descripcion = buildCronogramaDescription({
+      area,
+      dispositivos: manualCronogramaForm.dispositivos,
+      counts,
+      start,
+      end,
+      note: manualCronogramaForm.notas,
+      entityLabel: entidadActivaNombre
+    });
+
+    setManualCronogramaError("");
+    setManualCronogramaInfo("");
+    setIsCreatingManualCronograma(true);
+
+    try {
+      await httpClient.post("/api/mantenimientos", {
+        fecha: fechaInicioKey,
+        numeroReporte: area,
+        tipo: "Cronograma",
+        estado: "Pendiente",
+        activo_id: null,
+        tecnico: "",
+        tecnico_id: null,
+        descripcion,
+        checklist: {
+          manualCronograma: true,
+          fechaInicio: fechaInicioKey,
+          fechaFin: toDateKey(end),
+          area
+        }
+      });
+      setManualCronogramaInfo("Se creó el cronograma manual correctamente.");
+      setManualCronogramaForm(buildDefaultCronogramaForm());
+      await loadData();
+    } catch (err) {
+      setManualCronogramaError(err?.response?.data?.message || "No se pudo crear el cronograma manual.");
+    } finally {
+      setIsCreatingManualCronograma(false);
+    }
+  };
+
   const toggleSelectedDay = (dateKey) => {
     if (!dateKey) return;
     setSelectedDayKeys((prev) => {
@@ -1011,8 +1190,8 @@ export default function CronogramaPage({ selectedEntidadId }) {
         if (!item?.id) return false;
         if (!isCronogramaTipo(item.tipo)) return false;
         if (item.isPeriodic) return false;
-        const dateKey = toDateKey(item.fecha);
-        return dateKey && daySet.has(dateKey);
+        const dateKeys = getCronogramaDateKeys(item);
+        return dateKeys.some((dateKey) => daySet.has(dateKey));
       });
   }, [selectedDayKeys, filteredMantenimientos]);
 
@@ -1075,6 +1254,27 @@ export default function CronogramaPage({ selectedEntidadId }) {
           <p>Visualiza las actividades programadas por día y por mes.</p>
         </div>
         <div className="cronograma-header-actions">
+          <button
+            type="button"
+            className="btn-action cronograma-manual-button"
+            onClick={showManualCronogramaForm ? closeManualCronogramaForm : openManualCronogramaForm}
+            disabled={!canCreate || isCreatingManualCronograma}
+            title={
+              canCreate
+                ? showManualCronogramaForm
+                  ? isCreatingManualCronograma
+                    ? "Guardando cronograma manual"
+                    : "Ocultar cronograma manual"
+                  : "Crear cronograma manual"
+                : "No tienes permiso para crear cronogramas"
+            }
+          >
+            {showManualCronogramaForm
+              ? isCreatingManualCronograma
+                ? "Guardando..."
+                : "Ocultar cronograma"
+              : "Cronograma manual"}
+          </button>
           <button
             type="button"
             className="btn-action"
@@ -1158,6 +1358,197 @@ export default function CronogramaPage({ selectedEntidadId }) {
           {bulkError && <div className="alert alert-error">{bulkError}</div>}
           {bulkInfo && <div className="alert alert-success">{bulkInfo}</div>}
         </div>
+      )}
+
+      {showManualCronogramaForm && (
+        <section className="cronograma-manual-panel">
+          <div className="cronograma-manual-header">
+            <div>
+              <h2>Programación manual</h2>
+              <p>Agenda una ventana de mantenimiento por área sin asociarla a un activo.</p>
+              <small className="cronograma-manual-context">
+                {entidadActivaNombre
+                  ? `Entidad en contexto: ${entidadActivaNombre}`
+                  : "Evento general sin activo asociado."}
+              </small>
+            </div>
+            <div className="cronograma-manual-header-actions">
+              <button
+                type="button"
+                className="btn-action"
+                onClick={closeManualCronogramaForm}
+                disabled={isCreatingManualCronograma}
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                className="btn-action"
+                onClick={handleManualCronogramaReset}
+                disabled={isCreatingManualCronograma}
+              >
+                Restablecer
+              </button>
+            </div>
+          </div>
+
+          {(manualCronogramaError || manualCronogramaInfo) && (
+            <div className="cronograma-manual-alerts">
+              {manualCronogramaError && <div className="alert alert-error">{manualCronogramaError}</div>}
+              {manualCronogramaInfo && <div className="alert alert-success">{manualCronogramaInfo}</div>}
+            </div>
+          )}
+
+          <form className="cronograma-manual-form" onSubmit={handleManualCronogramaSubmit}>
+            <div className="cronograma-manual-grid">
+              <label className="cronograma-field cronograma-field-wide">
+                <span>Área o frente de trabajo *</span>
+                <input
+                  type="text"
+                  name="area"
+                  value={manualCronogramaForm.area}
+                  onChange={handleManualCronogramaChange}
+                  placeholder="Ej. Planta Norte / Sistemas"
+                  required
+                />
+              </label>
+
+              <label className="cronograma-field">
+                <span>Fecha inicio *</span>
+                <input
+                  type="date"
+                  name="fechaInicio"
+                  value={manualCronogramaForm.fechaInicio}
+                  onChange={handleManualCronogramaChange}
+                  required
+                />
+              </label>
+
+              <label className="cronograma-field">
+                <span>Fecha fin *</span>
+                <input
+                  type="date"
+                  name="fechaFin"
+                  value={manualCronogramaForm.fechaFin}
+                  onChange={handleManualCronogramaChange}
+                  required
+                />
+              </label>
+
+              <label className="cronograma-field cronograma-field-wide">
+                <span>Dispositivos o componentes</span>
+                <input
+                  type="text"
+                  name="dispositivos"
+                  value={manualCronogramaForm.dispositivos}
+                  onChange={handleManualCronogramaChange}
+                  placeholder="Ej. 12 equipos, 2 impresoras, 1 switch"
+                />
+              </label>
+
+              <div className="cronograma-count-grid">
+                <label className="cronograma-field">
+                  <span>Cómputo</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    name="computo"
+                    value={manualCronogramaForm.computo}
+                    onChange={handleManualCronogramaChange}
+                    inputMode="numeric"
+                    placeholder="0"
+                  />
+                </label>
+                <label className="cronograma-field">
+                  <span>Rack</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    name="rack"
+                    value={manualCronogramaForm.rack}
+                    onChange={handleManualCronogramaChange}
+                    inputMode="numeric"
+                    placeholder="0"
+                  />
+                </label>
+                <label className="cronograma-field">
+                  <span>Switch</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    name="switch"
+                    value={manualCronogramaForm.switch}
+                    onChange={handleManualCronogramaChange}
+                    inputMode="numeric"
+                    placeholder="0"
+                  />
+                </label>
+                <label className="cronograma-field">
+                  <span>Impresoras</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    name="impresoras"
+                    value={manualCronogramaForm.impresoras}
+                    onChange={handleManualCronogramaChange}
+                    inputMode="numeric"
+                    placeholder="0"
+                  />
+                </label>
+                <label className="cronograma-field">
+                  <span>Escáner</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    name="escaner"
+                    value={manualCronogramaForm.escaner}
+                    onChange={handleManualCronogramaChange}
+                    inputMode="numeric"
+                    placeholder="0"
+                  />
+                </label>
+                <label className="cronograma-field">
+                  <span>Ergotrones</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    name="ergotrones"
+                    value={manualCronogramaForm.ergotrones}
+                    onChange={handleManualCronogramaChange}
+                    inputMode="numeric"
+                    placeholder="0"
+                  />
+                </label>
+              </div>
+
+              <label className="cronograma-field cronograma-field-wide">
+                <span>Observaciones</span>
+                <textarea
+                  name="notas"
+                  value={manualCronogramaForm.notas}
+                  onChange={handleManualCronogramaChange}
+                  placeholder="Notas, dependencias o alcance del trabajo"
+                  rows={3}
+                />
+              </label>
+            </div>
+
+            <div className="cronograma-manual-actions">
+              <button type="submit" className="btn-submit cronograma-manual-submit" disabled={!canCreate || isCreatingManualCronograma}>
+                {isCreatingManualCronograma ? "Guardando..." : "Crear cronograma"}
+              </button>
+              <button type="button" className="btn-action" onClick={handleManualCronogramaReset} disabled={isCreatingManualCronograma}>
+                Limpiar
+              </button>
+            </div>
+          </form>
+        </section>
       )}
 
       <section className="cronograma-bulk">

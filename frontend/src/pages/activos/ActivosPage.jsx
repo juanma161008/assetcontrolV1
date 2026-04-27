@@ -10,6 +10,7 @@ import { buildAssetLifeSheetHtml } from "../../utils/assetLifecycle";
 import { buildAssetsPdfReportHtml } from "../../utils/assetsReport";
 import { buildDocumentEmailHtml } from "../../utils/emailDocuments";
 import { toProperCase } from "../../utils/formatters";
+import useAnimatedPresence from "../../hooks/useAnimatedPresence";
 import {
   ACTIVO_CATEGORY_OPTIONS,
   CATEGORY_SUMMARY_KEYS,
@@ -340,6 +341,7 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
   const canEdit = hasPermission(currentUser, "EDITAR_ACTIVO");
   const canDelete = hasPermission(currentUser, "ADMIN_TOTAL");
   const isAdmin = canDelete;
+  const canEditActivo = canEdit || isAdmin;
   const canRequestBaja = hasPermission(currentUser, "VER_ACTIVOS");
   const canSelectRows = hasPermission(currentUser, "VER_ACTIVOS");
   const entidadActivaId = String(selectedEntidadId ?? "").trim();
@@ -768,6 +770,9 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
     modalActivo?.campos_especificos && typeof modalActivo.campos_especificos === "object"
       ? modalActivo.campos_especificos
       : {};
+  const canModifySelectedActivo = Boolean(
+    modalActivo && canEditActivo && (!isActivoFueraServicio(modalActivo) || isAdmin)
+  );
 
   const obtenerNombreEntidad = useCallback(
     (activo) => {
@@ -1266,6 +1271,8 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
     setEditId(null);
   };
 
+  const formModalPresence = useAnimatedPresence(showFormModal, 220, resetForm);
+
   const openNewActivoForm = () => {
     if (!canCreate) return;
     const normalizedCategory =
@@ -1273,6 +1280,8 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
         ? normalizeCategoriaActivo(categoriaMenu)
         : "";
     const categoriaProfileNext = normalizedCategory ? getCategoriaProfile(normalizedCategory) : null;
+    setError("");
+    setSuccess("");
     setEditId(null);
     setForm({
       ...INITIAL_FORM,
@@ -1295,7 +1304,6 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
   const closeFormModal = () => {
     if (isSubmitting) return;
     setShowFormModal(false);
-    resetForm();
   };
 
   const closeDetailModal = useCallback(() => {
@@ -1304,6 +1312,19 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
     setModalActivo(null);
     setHistorialMantenimientos([]);
   }, []);
+
+  useEffect(() => {
+    const body = globalThis?.document?.body;
+    if (!body) return undefined;
+    if (formModalPresence.isMounted || showDetailModal || showEmailModal || showBajaModal) {
+      body.classList.add("modal-open");
+    } else {
+      body.classList.remove("modal-open");
+    }
+    return () => {
+      body.classList.remove("modal-open");
+    };
+  }, [formModalPresence.isMounted, showDetailModal, showEmailModal, showBajaModal]);
 
   const handleKeyboardAction = useCallback((event, action) => {
     if (event.target !== event.currentTarget) return;
@@ -1430,7 +1451,7 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
 
     if (!validateForm()) return;
     if (!editId && !canCreate) return setError("No tienes permiso para crear activos");
-    if (editId && !canEdit) return setError("No tienes permiso para editar activos");
+    if (editId && !canEditActivo) return setError("No tienes permiso para editar activos");
 
     setIsSubmitting(true);
     try {
@@ -1438,7 +1459,6 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
       await cargarActivos();
       await cargarEntidades();
       setShowFormModal(false);
-      resetForm();
     } catch (err) {
       const message = err?.response?.data?.message || err?.response?.data?.error || "Error al guardar activo";
       setError(message);
@@ -1715,11 +1735,17 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
 
   const handleEdit = (activo, event) => {
     event?.stopPropagation?.();
-    if (!canEdit) return setError("No tienes permiso para editar activos");
+    if (!canEditActivo) return setError("No tienes permiso para editar activos");
+
+    if (isActivoFueraServicio(activo) && !isAdmin) {
+      return setError("Solo un administrador puede modificar un activo fuera de servicio");
+    }
 
     const item = normalizarActivo(activo);
     const entidadBySede = entidadesOrdenadas.find((e) => e.nombre === item.sede);
     const entidadId = String(item.entidad_id ?? entidadBySede?.id ?? "");
+    setError("");
+    setSuccess("");
     setEditId(item.id);
     setForm({
       ...INITIAL_FORM,
@@ -3070,6 +3096,7 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
                 const activoFueraServicio = ["fueradeservicio", "baja", "retirado"].includes(
                   normalizeStatusToken(item.estado)
                 );
+                const canModifyActivoRow = canEditActivo && (!activoFueraServicio || isAdmin);
                 return (
                 <tr
                   key={item.id}
@@ -3108,7 +3135,7 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
                   <td>{item.hdd || "N/A"}</td>
                   <td><span className={`estado-badge ${getEstadoClassName(item.estado)}`}>{item.estado || "-"}</span></td>
                   <td className="actions-cell">
-                    {canEdit && (
+                    {canModifyActivoRow && (
                       <button
                         type="button"
                         className="btn-action-icon btn-action-edit"
@@ -3394,9 +3421,10 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
         </div>
       )}
 
-      {showFormModal && (
+      {formModalPresence.isMounted && (
         <div
-          className="modal-overlay"
+          className="modal-overlay modal-form-overlay"
+          data-state={formModalPresence.phase}
           onClick={(event) => {
             if (event.target === event.currentTarget) closeFormModal();
           }}
@@ -3405,7 +3433,12 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
           tabIndex={0}
           aria-label="Cerrar formulario de activo"
         >
-          <div className="modal-content modal-form-content" role="dialog" aria-modal="true">
+          <div
+            className="modal-content modal-form-content"
+            role="dialog"
+            aria-modal="true"
+            data-state={formModalPresence.phase}
+          >
             <div className="modal-header">
               <h2>{modalTitle}</h2>
               <button
@@ -3707,7 +3740,7 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
               </div>
             </div>
             <div className="modal-footer">
-              {canEdit && (
+              {canModifySelectedActivo && (
                 <button
                   type="button"
                   className="btn-submit"

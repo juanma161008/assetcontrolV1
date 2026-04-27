@@ -564,11 +564,19 @@
 }
 
 .modal-form-content {
-  max-width: 1080px;
+  width: min(860px, calc(100vw - 32px));
+  max-width: 860px;
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  animation: activosModalCardIn 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.modal-form-content[data-state="closing"] {
+  animation: activosModalCardOut 0.18s ease forwards;
+  pointer-events: none;
 }
 
 .modal-form-content .modal-header {
@@ -589,6 +597,18 @@
   bottom: 0;
   background: #f8fafc;
   z-index: 1;
+}
+
+.modal-form-overlay {
+  background-color: rgba(2, 15, 44, 0.58);
+  backdrop-filter: blur(10px);
+  animation: activosModalOverlayIn 0.22s ease both;
+  will-change: background-color, backdrop-filter;
+}
+
+.modal-form-overlay[data-state="closing"] {
+  animation: activosModalOverlayOut 0.18s ease forwards;
+  pointer-events: none;
 }
 
 /* FILAS DEL FORMULARIO */
@@ -1701,6 +1721,54 @@ button:disabled {
   }
 }
 
+@keyframes activosModalOverlayIn {
+  from {
+    background-color: rgba(2, 15, 44, 0);
+    backdrop-filter: blur(0);
+  }
+
+  to {
+    background-color: rgba(2, 15, 44, 0.58);
+    backdrop-filter: blur(10px);
+  }
+}
+
+@keyframes activosModalOverlayOut {
+  from {
+    background-color: rgba(2, 15, 44, 0.58);
+    backdrop-filter: blur(10px);
+  }
+
+  to {
+    background-color: rgba(2, 15, 44, 0);
+    backdrop-filter: blur(0);
+  }
+}
+
+@keyframes activosModalCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes activosModalCardOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+}
+
 /* =========================================== */
 /* RESPONSIVE DESIGN */
 /* =========================================== */
@@ -1928,6 +1996,38 @@ button:disabled {
 
   .close-btn {
     min-height: 34px;
+  }
+}
+
+.modal-form-overlay {
+  justify-content: center;
+}
+
+.modal-form-content {
+  width: min(860px, calc(100vw - 32px));
+  max-height: calc(100svh - 40px);
+}
+
+@media (max-width: 768px) {
+  .modal-form-overlay {
+    align-items: center;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+
+  .modal-form-content {
+    width: min(100%, calc(100vw - 20px));
+    max-height: calc(100svh - 20px);
+    border-radius: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .modal-form-content {
+    max-height: calc(100svh - 16px);
+    border-radius: 12px;
   }
 }
 
