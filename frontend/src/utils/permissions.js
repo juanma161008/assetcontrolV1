@@ -1,4 +1,18 @@
-﻿export const ADMIN_PERMISSION = "ADMIN_TOTAL";
+export const ADMIN_PERMISSION = "ADMIN_TOTAL";
+
+const PERMISSION_LABELS = {
+  ADMIN_TOTAL: "Administrador total",
+  CREAR_USUARIO: "Crear usuarios",
+  VER_ACTIVOS: "Ver activos",
+  CREAR_ACTIVO: "Crear activos",
+  EDITAR_ACTIVO: "Editar activos",
+  ELIMINAR_ACTIVO: "Eliminar activos",
+  CREAR_MANTENIMIENTO: "Crear mantenimientos",
+  EDITAR_MANTENIMIENTO: "Editar mantenimientos",
+  ELIMINAR_MANTENIMIENTO: "Eliminar mantenimientos",
+  GENERAR_ORDEN: "Generar órdenes",
+  FIRMAR_ORDEN: "Firmar órdenes"
+};
 
 export function getPermissions(user) {
   return Array.isArray(user?.permisos) ? user.permisos : [];
@@ -21,6 +35,21 @@ export function hasAnyPermission(user, permissions = []) {
   return permissions.some((permission) => hasPermission(user, permission));
 }
 
+const humanizePermission = (permission = "") =>
+  String(permission || "")
+    .trim()
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+
+export function getPermissionLabel(permission = "") {
+  const normalizedPermission = String(permission || "").trim().toUpperCase();
+  return PERMISSION_LABELS[normalizedPermission] || humanizePermission(normalizedPermission);
+}
+
 export function getRoleLabel(role) {
   const roleId = Number(role);
 
@@ -38,4 +67,3 @@ export function getRoleLabel(role) {
 
   return String(role || "Sin rol");
 }
-

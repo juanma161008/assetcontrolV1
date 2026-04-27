@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import httpClient from "../../services/httpClient";
 import { getCurrentUser } from "../../services/authService";
-import { hasPermission, getRoleLabel } from "../../utils/permissions";
+import { getPermissionLabel, hasPermission, getRoleLabel } from "../../utils/permissions";
 import { toProperCase } from "../../utils/formatters";
 import {
   buildPasswordPolicyMessage,
@@ -41,8 +41,7 @@ export default function UsuariosPage() {
   const [success, setSuccess] = useState("");
   const [claveReseteada, setClaveReseteada] = useState(null);
 
-  const formatPermisoLabel = (permiso = "") =>
-    toProperCase(String(permiso || "").split("_").join(" ").toLowerCase());
+  const formatPermisoLabel = (permiso = "") => getPermissionLabel(permiso);
 
   const normalizeRoleName = useCallback((role = {}) => {
     const roleId = Number(role.id ?? role.rol_id ?? 0);
@@ -721,7 +720,12 @@ export default function UsuariosPage() {
           <>
             <div className="permisos-grid">
               {catalogoPermisos.map((permiso) => (
-                <label key={permiso} className="checkbox-line" htmlFor={`permiso-${permiso}`}>
+                <label
+                  key={permiso}
+                  className="checkbox-line permiso-option"
+                  htmlFor={`permiso-${permiso}`}
+                  title={formatPermisoLabel(permiso)}
+                >
                   <input
                     id={`permiso-${permiso}`}
                     type="checkbox"

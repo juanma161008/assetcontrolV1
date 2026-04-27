@@ -9,7 +9,7 @@ import {
   updateProfile
 } from "../../services/authService";
 import { toProperCase } from "../../utils/formatters";
-import { getRoleLabel } from "../../utils/permissions";
+import { getPermissionLabel, getRoleLabel } from "../../utils/permissions";
 import { buildPasswordPolicyMessage, validatePassword } from "../../utils/passwordPolicy";
 import "../../styles/MiCuentaPage.css";
 
@@ -277,12 +277,12 @@ export default function MiCuentaPage({ onUserUpdate }) {
             </div>
             <div className="profile-row profile-permissions">
               <span>Permisos</span>
-              <div>
+              <div className="profile-permissions-list">
                 {Array.isArray(user?.permisos) && user.permisos.length > 0 ? (
                   user.permisos.map((permiso) => (
-                    <code key={permiso} className="perm-tag">
-                      {permiso}
-                    </code>
+                    <span key={permiso} className="perm-tag" title={getPermissionLabel(permiso)}>
+                      {getPermissionLabel(permiso)}
+                    </span>
                   ))
                 ) : (
                   <strong>Sin permisos asignados</strong>

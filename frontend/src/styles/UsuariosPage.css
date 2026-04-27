@@ -292,6 +292,26 @@
   gap: 8px 12px;
 }
 
+.permisos-grid .permiso-option {
+  padding: 10px 12px;
+  min-height: 46px;
+  border: 1px solid #dbe7f5;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.04);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.permisos-grid .permiso-option:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  transform: translateY(-1px);
+}
+
+.permisos-grid .permiso-option input[type="checkbox"] {
+  flex-shrink: 0;
+}
+
 @media (max-width: 1024px) {
   .usuarios-grid {
     grid-template-columns: 1fr;

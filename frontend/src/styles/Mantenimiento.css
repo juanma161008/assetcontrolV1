@@ -950,6 +950,8 @@ textarea.form-input,
 .maintenance-detail-overlay {
   background-color: rgba(2, 15, 44, 0.58);
   backdrop-filter: blur(10px);
+  justify-content: center;
+  align-items: center;
   animation: maintenanceOverlayIn 0.22s ease both;
   will-change: background-color, backdrop-filter;
 }
@@ -970,7 +972,11 @@ textarea.form-input,
 }
 
 .maintenance-detail-overlay .modal-dialog {
-  width: min(860px, calc(100vw - 32px));
+  width: min(780px, calc(100vw - 28px));
+  max-height: calc(100svh - 28px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   animation: maintenanceCardIn 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
   will-change: transform, opacity;
   transform-origin: center center;
@@ -2210,8 +2216,8 @@ button:focus:not(:active)::after {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  width: min(860px, calc(100vw - 32px));
-  max-height: calc(100svh - 40px);
+  width: min(760px, calc(100vw - 28px));
+  max-height: calc(100svh - 28px);
 }
 
 .maintenance-create-modal .modal-body {
@@ -2222,8 +2228,8 @@ button:focus:not(:active)::after {
 }
 
 .modal-dialog {
-  width: min(900px, calc(100vw - 32px));
-  max-height: calc(100svh - 40px);
+  width: min(860px, calc(100vw - 28px));
+  max-height: calc(100svh - 32px);
 }
 
 .order-sign-modal-card {
@@ -2437,6 +2443,8 @@ button:focus:not(:active)::after {
   padding: 0;
   background: #ffffff;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ===== MODAL RESPONSIVE HARDENING (TABLETS Y PORTATILES) ===== */

@@ -21,8 +21,8 @@ cp deploy/.env.production.example deploy/.env.production
 - `JWT_SECRET`
 - (Opcional) variables SMTP
 
-Si quieres usar Google Drive para los respaldos, crea una carpeta local y sincronizala con Google Drive for desktop. En tu caso, usa `G:\Mi unidad\Backup Assetcontrol` y guarda `BACKUP_DIR` y `PG_DUMP_PATH` en `backend/.env` para no tener que escribirlos cada vez.
-Si `pg_dump` no esta en el PATH, define `PG_DUMP_PATH` con la ruta completa al binario.
+Si quieres usar Google Drive para los respaldos, crea una carpeta local y sincronizala con Google Drive for desktop. En tu caso, usa `G:\Mi unidad\Backup Assetcontrol` y deja `BACKUP_DIR` al registrar la tarea o como variable de entorno.
+El script toma `deploy/.env.production` por defecto como archivo de variables de respaldo. Si `pg_dump` no esta en el PATH, define `PG_DUMP_PATH` con la ruta completa al binario, ya sea en `deploy/.env.production` o al registrar la tarea.
 
 ## 3) Levantar stack productivo
 
@@ -84,7 +84,7 @@ La tarea hace esto cada dia:
 - lo guarda en la carpeta local sincronizada;
 - Google Drive sube ese archivo automaticamente a tu cuenta.
 
-Si ya dejaste las variables en `backend/.env`, solo ejecuta:
+Si ya dejaste las variables en `deploy/.env.production`, solo ejecuta:
 
 ```bash
 npm run backup:db
@@ -94,3 +94,15 @@ npm run backup:db
 
 Este despliegue **no crea tablas automaticamente**. Debes restaurar tu esquema/datos de PostgreSQL antes de usar la app en produccion.
 Google Drive debe usarse como destino del respaldo, no como carpeta de datos viva de PostgreSQL.
+
+## 8) Logs y diagnostico rapido
+
+- Un `304` en `/api/*` significa que la respuesta no cambio y el navegador reutilizo la copia cacheada. No es un error.
+- Si quieres ver actividad real del stack, revisa:
+
+```bash
+docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production logs -f backend
+docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production logs -f caddy
+```
+
+- Si la interfaz no refleja cambios, haz una recarga dura del navegador antes de asumir que el backend fallo.

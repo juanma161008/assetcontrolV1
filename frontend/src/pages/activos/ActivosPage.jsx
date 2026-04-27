@@ -83,6 +83,8 @@ const normalizeSearchValue = (value = "") =>
 const normalizeImportKey = (value = "") => normalizeSearchValue(value).replace(/[^a-z0-9]/g, "");
 const toText = (value = "") => String(value ?? "").trim();
 const normalizeStatusToken = (value = "") => normalizeImportKey(value);
+const isActivoFueraServicio = (activo = {}) =>
+  ["fueradeservicio", "baja", "retirado"].includes(normalizeStatusToken(activo?.estado));
 const parseQuickFilterValue = (value = "") => {
   const [type = "", ...parts] = String(value || "").split("::");
   return {
@@ -1309,14 +1311,20 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
   const closeDetailModal = useCallback(() => {
     setShowEmailModal(false);
     setShowDetailModal(false);
+  }, []);
+
+  const resetDetailModal = useCallback(() => {
+    setShowEmailModal(false);
     setModalActivo(null);
     setHistorialMantenimientos([]);
   }, []);
 
+  const detailModalPresence = useAnimatedPresence(showDetailModal, 220, resetDetailModal);
+
   useEffect(() => {
     const body = globalThis?.document?.body;
     if (!body) return undefined;
-    if (formModalPresence.isMounted || showDetailModal || showEmailModal || showBajaModal) {
+    if (formModalPresence.isMounted || detailModalPresence.isMounted || showEmailModal || showBajaModal) {
       body.classList.add("modal-open");
     } else {
       body.classList.remove("modal-open");
@@ -1324,7 +1332,7 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
     return () => {
       body.classList.remove("modal-open");
     };
-  }, [formModalPresence.isMounted, showDetailModal, showEmailModal, showBajaModal]);
+  }, [formModalPresence.isMounted, detailModalPresence.isMounted, showEmailModal, showBajaModal]);
 
   const handleKeyboardAction = useCallback((event, action) => {
     if (event.target !== event.currentTarget) return;
@@ -3649,9 +3657,10 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
         </div>
       )}
 
-      {showDetailModal && modalActivo && (
+      {detailModalPresence.isMounted && modalActivo && (
         <div
-          className="modal-overlay"
+          className="modal-overlay modal-detail-overlay"
+          data-state={detailModalPresence.phase}
           onClick={(event) => {
             if (event.target === event.currentTarget) closeDetailModal();
           }}
@@ -3660,9 +3669,12 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
           tabIndex={0}
           aria-label="Cerrar detalle del activo"
         >
-          <div className="modal-content" role="dialog" aria-modal="true">
-            <div className="modal-header">
-              <h2>Detalle Del Activo</h2>
+          <div className="modal-content modal-detail-content" role="dialog" aria-modal="true" data-state={detailModalPresence.phase}>
+            <div className="modal-header modal-detail-header">
+              <div className="modal-detail-header-copy">
+                <span className="modal-detail-kicker">Ficha del activo</span>
+                <h2>Detalle Del Activo</h2>
+              </div>
               <button
                 type="button"
                 className="close-btn close-btn-compact close-btn-icon"
@@ -3680,9 +3692,25 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
                 >
                   <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
-              </button>
-            </div>
-            <div className="modal-body">
+                </button>
+              </div>
+            <div className="modal-body modal-detail-body">
+              <div className="modal-detail-hero">
+                <div className="modal-detail-hero-copy">
+                  <span className="modal-detail-kicker">Resumen rápido</span>
+                  <h3>{modalActivo.activo || modalActivo.nombre || "Activo"}</h3>
+                  <p>
+                    {inferCategoriaActivo(modalActivo)} · {obtenerNombreEntidad(modalActivo)}
+                  </p>
+                </div>
+                <div className="modal-detail-hero-meta">
+                  <span className={`estado-badge ${getEstadoClassName(modalActivo.estado)}`}>
+                    {modalActivo.estado || "-"}
+                  </span>
+                  <span className="reporte-badge-large">{obtenerConsecutivoActivo(modalActivo.id)}</span>
+                </div>
+              </div>
+
               <div className="modal-info-table-wrap">
                 <table className="modal-info-table">
                   <tbody>
@@ -3712,7 +3740,12 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
                   </div>
                 </>
               )}
-              <h3 className="modal-section-title">Histórico de mantenimientos</h3>
+              <div className="modal-detail-history-head">
+                <h3 className="modal-section-title">Histórico de mantenimientos</h3>
+                <span className="modal-detail-history-count">
+                  {historialMantenimientos.length} registro{historialMantenimientos.length === 1 ? "" : "s"}
+                </span>
+              </div>
               <div className="table-responsive">
                 <table className="tabla-historico">
                   <thead>
@@ -3739,28 +3772,30 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
                 </table>
               </div>
             </div>
-            <div className="modal-footer">
-              {canModifySelectedActivo && (
-                <button
-                  type="button"
-                  className="btn-submit"
-                  onClick={() => {
-                    const activoToEdit = modalActivo;
-                    closeDetailModal();
-                    handleEdit(activoToEdit);
-                  }}
-                >
-                  Editar
+            <div className="modal-footer modal-detail-footer">
+              <div className="modal-detail-actions">
+                {canModifySelectedActivo && (
+                  <button
+                    type="button"
+                    className="btn-submit"
+                    onClick={() => {
+                      const activoToEdit = modalActivo;
+                      closeDetailModal();
+                      handleEdit(activoToEdit);
+                    }}
+                  >
+                    Editar
+                  </button>
+                )}
+                {canDelete && <button type="button" className="btn-pdf" onClick={() => handleDelete(modalActivo.id)}>Eliminar</button>}
+                <button type="button" className="btn-email" onClick={abrirModalCorreo} disabled={isSendingEmail}>
+                  {isSendingEmail ? "Enviando..." : "Enviar Por Correo"}
                 </button>
-              )}
-              {canDelete && <button type="button" className="btn-pdf" onClick={() => handleDelete(modalActivo.id)}>Eliminar</button>}
-              <button type="button" className="btn-email" onClick={abrirModalCorreo} disabled={isSendingEmail}>
-                {isSendingEmail ? "Enviando..." : "Enviar Por Correo"}
-              </button>
-              <button type="button" className="btn-hoja-vida" onClick={generarHojaDeVida}>
-                Generar Hoja De Vida
-              </button>
-              <button type="button" className="btn-cerrar" onClick={closeDetailModal}>Cerrar</button>
+                <button type="button" className="btn-hoja-vida" onClick={generarHojaDeVida}>
+                  Generar Hoja De Vida
+                </button>
+                <button type="button" className="btn-cerrar" onClick={closeDetailModal}>Cerrar</button>
+              </div>
             </div>
           </div>
         </div>
