@@ -946,13 +946,21 @@ textarea.form-input,
   background: rgba(0, 0, 0, 0.5);
 }
 
-.maintenance-create-overlay,
 .maintenance-detail-overlay {
   background-color: rgba(2, 15, 44, 0.58);
   backdrop-filter: blur(10px);
   justify-content: center;
   align-items: center;
   animation: maintenanceOverlayIn 0.22s ease both;
+  will-change: background-color, backdrop-filter;
+}
+
+.maintenance-create-overlay {
+  background-color: rgba(2, 15, 44, 0.58);
+  backdrop-filter: blur(10px);
+  justify-content: center;
+  align-items: center;
+  animation: maintenanceOverlayIn 0.16s ease both;
   will-change: background-color, backdrop-filter;
 }
 
@@ -963,7 +971,7 @@ textarea.form-input,
 }
 
 .maintenance-create-modal {
-  animation: maintenanceCardIn 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: maintenanceCardIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
   will-change: transform, opacity;
 }
 

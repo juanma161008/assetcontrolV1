@@ -239,7 +239,7 @@ const getNumeroReporteLabel = (tipo = "") =>
       : "Número de reporte / consecutivo *";
 const getNumeroReporteHelp = (tipo = "") =>
   isPuntoRedTipo(tipo)
-    ? "Usa el código alfanumérico del Punto de Red. Si lo dejas vacío, el sistema generará un PR.### automáticamente. Este registro se guarda sin activo asociado."
+    ? "Usa el código alfanumérico del Punto de Red. Si lo dejas vacío, el sistema generará un PR automáticamente. Este registro se guarda sin activo asociado."
     : isCronogramaTipo(tipo)
       ? "Registra el área o dependencia para este cronograma. Este registro se guarda sin activo asociado."
       : "Se sugiere el siguiente consecutivo del historial. Puedes modificarlo antes de guardar.";
@@ -2795,7 +2795,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       return (
         <div className="maintenance-form-field">
           <span className="maintenance-field-label">Activo asociado</span>
-          <small>Este Punto de Red se identifica con el código del reporte y no requiere activo. Si lo dejas vacío, se genera un PR.###.</small>
+          <small>Este Punto de Red se identifica con el código del reporte y no requiere activo. Si lo dejas vacío, el sistema generará un PR automáticamente.</small>
         </div>
       );
     }
@@ -3355,7 +3355,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
             <div className="maintenance-modal-head">
               <div>
                 <h2 id="create-maintenance-title">Crear mantenimiento</h2>
-                <p>Para Punto de Red usa el tipo especial. Si dejas el código vacío, el sistema generará un PR.### y lo guardará sin activo asociado.</p>
+                <p>Para Punto de Red usa el tipo especial. Si dejas el código vacío, el sistema generará un PR automáticamente y lo guardará sin activo asociado.</p>
               </div>
               <button type="button" className="maintenance-modal-close" onClick={closeCreateModal} aria-label="Cerrar modal">
                 <svg
@@ -3376,20 +3376,22 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                   <label htmlFor="create-mantenimiento-fecha">Fecha</label>
                   <input id="create-mantenimiento-fecha" type="date" name="fecha" value={form.fecha} onChange={handleChange} aria-label="Fecha" />
                 </div>
-                <div className="maintenance-form-field">
-                  <label htmlFor="create-mantenimiento-reporte">{getNumeroReporteLabel(form.tipo)}</label>
-                  <input
-                    id="create-mantenimiento-reporte"
-                    type="text"
-                    name="numeroReporte"
-                    value={form.numeroReporte}
-                    onChange={handleChange}
-                    placeholder={getNumeroReporteLabel(form.tipo)}
-                    aria-label="Número de reporte"
-                    required
-                  />
-                  <small>{getNumeroReporteHelp(form.tipo)}</small>
-                </div>
+                {!isTipoDoble(form.tipo) && (
+                  <div className="maintenance-form-field">
+                    <label htmlFor="create-mantenimiento-reporte">{getNumeroReporteLabel(form.tipo)}</label>
+                    <input
+                      id="create-mantenimiento-reporte"
+                      type="text"
+                      name="numeroReporte"
+                      value={form.numeroReporte}
+                      onChange={handleChange}
+                      placeholder={getNumeroReporteLabel(form.tipo)}
+                      aria-label="Número de reporte"
+                      required
+                    />
+                    <small>{getNumeroReporteHelp(form.tipo)}</small>
+                  </div>
+                )}
                 {createActivoField}
                 <div className="maintenance-form-field">
                   <label htmlFor="create-mantenimiento-tipo">Tipo</label>
@@ -3479,20 +3481,6 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                   </>
                 ) : (
                   <>
-                    <div className="maintenance-form-field">
-                      <label htmlFor="create-mantenimiento-reporte">{getNumeroReporteLabel(form.tipo)}</label>
-                      <input
-                        id="create-mantenimiento-reporte"
-                        type="text"
-                        name="numeroReporte"
-                        value={form.numeroReporte}
-                        onChange={handleChange}
-                        placeholder={getNumeroReporteLabel(form.tipo)}
-                        aria-label="Número de reporte"
-                        required
-                      />
-                      <small>{getNumeroReporteHelp(form.tipo)}</small>
-                    </div>
                     <div className="maintenance-form-field maintenance-form-field-wide">
                       <label htmlFor="create-mantenimiento-cambio-partes">Cambio de partes</label>
                       <textarea
