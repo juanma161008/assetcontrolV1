@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../src/infrastructure/database/postgres.js", () => ({
   default: {
-    query: vi.fn()
+    query: vi.fn(),
+    connect: vi.fn()
   }
 }));
 
@@ -15,9 +16,17 @@ import OrdenPgRepository from "../src/infrastructure/repositories/OrdenPgReposit
 import PermisoPgRepository from "../src/infrastructure/repositories/PermisoPgRepository.js";
 import UsuarioPgRepository from "../src/infrastructure/repositories/UsuarioPgRepository.js";
 
+const poolClient = {
+  query: vi.fn(),
+  release: vi.fn()
+};
+
 describe("Postgres repositories", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pool.connect.mockResolvedValue(poolClient);
+    poolClient.query.mockReset();
+    poolClient.release.mockReset();
   });
 
   it("ActivoPgRepository findAll, findById, create, update y delete", async () => {
@@ -209,7 +218,14 @@ describe("Postgres repositories", () => {
     const byEmail = await repo.findByEmail("u@x.com");
     expect(byEmail).toEqual({ id: 1, email: "u@x.com" });
 
-    pool.query.mockResolvedValueOnce({ rows: [{ id: 2, email: "n@x.com" }] });
+    repo.passwordHistoryTableReady = true;
+    poolClient.query.mockImplementation(async (sql) => {
+      if (String(sql).includes("INSERT INTO usuarios")) {
+        return { rows: [{ id: 2, email: "n@x.com" }] };
+      }
+      return { rows: [] };
+    });
+
     const created = await repo.create({
       nombre: "Nuevo",
       email: "n@x.com",
@@ -217,9 +233,30 @@ describe("Postgres repositories", () => {
       rol_id: 3
     });
     expect(created).toEqual({ id: 2, email: "n@x.com" });
+    expect(pool.connect).toHaveBeenCalledTimes(1);
+    expect(poolClient.release).toHaveBeenCalledTimes(1);
 
     pool.query.mockResolvedValueOnce({ rows: [{ id: 2, nombre: "Nuevo" }] });
     const byId = await repo.findById(2);
     expect(byId).toEqual({ id: 2, nombre: "Nuevo" });
+  });
+
+  it("UsuarioPgRepository getRecentPasswordHashes devuelve historial reciente", async () => {
+    const repo = new UsuarioPgRepository();
+    repo.passwordHistoryTableReady = true;
+
+    pool.query.mockResolvedValueOnce({
+      rows: [
+        { password_hash: "hash-a" },
+        { password_hash: "hash-b" }
+      ]
+    });
+
+    const hashes = await repo.getRecentPasswordHashes(7, 2);
+    expect(hashes).toEqual(["hash-a", "hash-b"]);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining("SELECT password_hash"),
+      [7, 2]
+    );
   });
 });

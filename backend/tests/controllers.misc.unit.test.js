@@ -368,6 +368,7 @@ describe("Usuarios.controller", () => {
     const { editarUsuario, stubs } = await loadUsuariosController();
 
     stubs.hash.mockReturnValue("hash-edit");
+    stubs.repoFindById.mockResolvedValue({ id: 2, password: "old-hash" });
     stubs.repoUpdate.mockResolvedValue({ id: 2, email: "e@x.com" });
     stubs.logExecute.mockResolvedValue(undefined);
 

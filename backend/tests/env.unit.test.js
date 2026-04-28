@@ -56,6 +56,10 @@ describe("config/env", () => {
       TRUST_PROXY: "",
       AUTH_RATE_LIMIT_WINDOW_MS: "",
       AUTH_RATE_LIMIT_MAX: "",
+      PASSWORD_HASH_ROUNDS: "",
+      PASSWORD_HISTORY_LIMIT: "",
+      JWT_ISSUER: "",
+      JWT_AUDIENCE: "",
       SCHEDULER_ENABLED: "",
       REPORTES_EMAILS: "",
       REPORTES_AUTOMATICOS: "",
@@ -72,6 +76,10 @@ describe("config/env", () => {
     expect(env.default.SCHEDULER_ENABLED).toBe("true");
     expect(env.default.REPORTES_AUTOMATICOS).toBe("true");
     expect(env.default.RECORDATORIOS_AUTOMATICOS).toBe("true");
+    expect(env.default.PASSWORD_HASH_ROUNDS).toBe(12);
+    expect(env.default.PASSWORD_HISTORY_LIMIT).toBe(5);
+    expect(env.default.JWT_ISSUER).toBe("assetcontrol-api");
+    expect(env.default.JWT_AUDIENCE).toBe("assetcontrol-web");
   });
 
   it("deriva provider deepseek y respeta valores personalizados", async () => {
@@ -100,6 +108,10 @@ describe("config/env", () => {
       TRUST_PROXY: "true",
       AUTH_RATE_LIMIT_WINDOW_MS: "60000",
       AUTH_RATE_LIMIT_MAX: "5",
+      PASSWORD_HASH_ROUNDS: "14",
+      PASSWORD_HISTORY_LIMIT: "7",
+      JWT_ISSUER: "issuer-x",
+      JWT_AUDIENCE: "audience-y",
       SCHEDULER_ENABLED: "false",
       REPORTES_EMAILS: "reportes@example.com",
       REPORTES_AUTOMATICOS: "false",
@@ -121,6 +133,10 @@ describe("config/env", () => {
     expect(env.default.TRUST_PROXY).toBe(true);
     expect(env.default.AUTH_RATE_LIMIT_WINDOW_MS).toBe(60000);
     expect(env.default.AUTH_RATE_LIMIT_MAX).toBe(5);
+    expect(env.default.PASSWORD_HASH_ROUNDS).toBe(14);
+    expect(env.default.PASSWORD_HISTORY_LIMIT).toBe(7);
+    expect(env.default.JWT_ISSUER).toBe("issuer-x");
+    expect(env.default.JWT_AUDIENCE).toBe("audience-y");
     expect(env.default.SCHEDULER_ENABLED).toBe("false");
     expect(env.default.REPORTES_EMAILS).toBe("reportes@example.com");
     expect(env.default.REPORTES_AUTOMATICOS).toBe("false");

@@ -9,6 +9,10 @@ import {
   generateStrongPassword,
   validatePassword
 } from "../../utils/passwordPolicy.js";
+import {
+  assertPasswordNotReused,
+  loadRecentPasswordHashes
+} from "../../utils/passwordSecurity.js";
 
 const repo = new UsuarioPgRepository();
 const permisoRepo = new PermisoPgRepository();
@@ -136,12 +140,31 @@ export async function editarUsuario(req, res) {
     const entidadesPayload = data.entidades_asignadas;
     delete data.entidades_asignadas;
 
-    if (data.password) {
-      const passwordValidation = validatePassword(data.password);
-      if (!passwordValidation.valid) {
-        return error(res, buildPasswordPolicyMessage(), 400);
+    if (data.password !== undefined) {
+      const candidatePassword = String(data.password || "").trim();
+      if (candidatePassword) {
+        const currentUser = await repo.findById(userId);
+        if (!currentUser) {
+          return error(res, "Usuario no encontrado", 404);
+        }
+
+        const passwordValidation = validatePassword(candidatePassword);
+        if (!passwordValidation.valid) {
+          return error(res, buildPasswordPolicyMessage(), 400);
+        }
+
+        const previousPasswordHashes = await loadRecentPasswordHashes(repo, userId);
+        await assertPasswordNotReused({
+          candidatePassword,
+          currentPasswordHash: currentUser.password,
+          previousPasswordHashes,
+          hashService: hashUtil
+        });
+
+        data.password = await hashUtil.hash(candidatePassword);
+      } else {
+        delete data.password;
       }
-      data.password = await hashUtil.hash(data.password);
     }
 
     if (data.email) {

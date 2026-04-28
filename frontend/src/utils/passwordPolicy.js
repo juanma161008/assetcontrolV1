@@ -38,7 +38,7 @@ export const validatePassword = (password = "") => {
 };
 
 export const buildPasswordPolicyMessage = () =>
-  `Mínimo ${PASSWORD_POLICY.minLength} caracteres con mayúscula, minúscula, número y símbolo.`;
+  `Minimo ${PASSWORD_POLICY.minLength} caracteres con mayuscula, minuscula, numero y simbolo. No reutilices contrasenas recientes.`;
 
 const randomInt = (max) => {
   if (globalThis.crypto?.getRandomValues) {

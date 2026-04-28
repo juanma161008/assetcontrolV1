@@ -238,7 +238,7 @@ describe("Application use cases", () => {
     );
 
     await expect(useCase.execute("u@x.com", "bad")).rejects.toThrow(
-      "Contraseña incorrecta"
+      "Contrasena incorrecta"
     );
   });
 
@@ -268,6 +268,35 @@ describe("Application use cases", () => {
       rol: 1,
       permisos: ["ADMIN_TOTAL"]
     });
+  });
+
+  it("LoginUseCase rehashes contrasenas cuando el costo quedo viejo", async () => {
+    const repo = {
+      findByEmail: vi.fn().mockResolvedValue({
+        id: 11,
+        nombre: "Rehash",
+        email: "rehash@x.com",
+        password: "old-hash",
+        rol_id: 2
+      }),
+      updatePassword: vi.fn().mockResolvedValue(undefined)
+    };
+    const useCase = new LoginUseCase(
+      repo,
+      {
+        getPermisosByRol: vi.fn().mockResolvedValue([])
+      },
+      {
+        compareHash: vi.fn().mockResolvedValue(true),
+        needsRehash: vi.fn().mockReturnValue(true),
+        hash: vi.fn().mockResolvedValue("new-hash")
+      }
+    );
+
+    const result = await useCase.execute("rehash@x.com", "123");
+
+    expect(repo.updatePassword).toHaveBeenCalledWith(11, "new-hash");
+    expect(result.email).toBe("rehash@x.com");
   });
 
   it("LoginUseCase tolera error en consulta de permisos", async () => {
@@ -715,7 +744,7 @@ describe("Application use cases", () => {
     ).rejects.toThrow("Email inv");
     await expect(
       useCase.execute({ nombre: "Nombre", email: "ok@x.com", password: "123" })
-    ).rejects.toThrow(/contraseña/i);
+    ).rejects.toThrow(/contrasena/i);
   });
 
   it("RegistroUseCase exige password cuando falta", async () => {

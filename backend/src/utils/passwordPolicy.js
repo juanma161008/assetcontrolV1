@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { PASSWORD_HISTORY_LIMIT } from "./passwordSecurity.js";
 
 export const PASSWORD_POLICY = {
   minLength: 12,
@@ -40,7 +41,7 @@ export const validatePassword = (password = "") => {
 };
 
 export const buildPasswordPolicyMessage = () =>
-  `La contraseña debe tener al menos ${PASSWORD_POLICY.minLength} caracteres e incluir mayúscula, minúscula, número y símbolo.`;
+  `La contrasena debe tener al menos ${PASSWORD_POLICY.minLength} caracteres, incluir mayuscula, minuscula, numero y simbolo, y no reutilizar las ultimas ${PASSWORD_HISTORY_LIMIT} contrasenas.`;
 
 const randomInt = (max) => crypto.randomInt(0, max);
 

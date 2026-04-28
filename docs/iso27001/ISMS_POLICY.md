@@ -11,6 +11,7 @@ MicroCinco is committed to:
 
 ## Objectives
 - Prevent unauthorized access to AssetControl data.
+- Enforce strong credential handling and authentication controls.
 - Ensure service availability meets agreed SLAs.
 - Detect and respond to security incidents in a timely manner.
 - Maintain audit trails for critical actions.
@@ -26,4 +27,4 @@ Exceptions require documented approval and risk acceptance.
 
 ## Review
 This policy is reviewed at least annually or after significant changes.
-Last review: 2026-03-30
+Last review: 2026-04-28

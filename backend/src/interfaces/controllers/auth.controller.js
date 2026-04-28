@@ -12,6 +12,10 @@ import LogPgRepository from "../../infrastructure/repositories/LogPgRepository.j
 import { generateToken } from "../../config/jwt.js";
 import hashUtil from "../../utils/hash.js";
 import { buildPasswordPolicyMessage, validatePassword } from "../../utils/passwordPolicy.js";
+import {
+  assertPasswordNotReused,
+  loadRecentPasswordHashes
+} from "../../utils/passwordSecurity.js";
 import { success, error } from "../../utils/response.js";
 
 const userRepo = new UsuarioPgRepository();
@@ -363,7 +367,7 @@ export async function resetPassword(req, res) {
       newPassword,
       debeCambiarPassword
     );
-    return success(res, result, "Contraseña reseteada");
+    return success(res, result, "Contrasena reseteada");
   } catch (e) {
     return error(res, e.message, 400);
   }
@@ -383,7 +387,7 @@ export async function changePassword(req, res) {
     }
 
     if (confirmPassword !== undefined && confirmPassword !== newPassword) {
-      return error(res, "Las contraseñas no coinciden", 400);
+      return error(res, "Las contrasenas no coinciden", 400);
     }
 
     const user = await userRepo.findById(req.user.id);
@@ -393,8 +397,16 @@ export async function changePassword(req, res) {
 
     const passwordValida = await hashUtil.compare(currentPassword, user.password);
     if (!passwordValida) {
-      return error(res, "La contraseña actual es incorrecta", 400);
+      return error(res, "La contrasena actual es incorrecta", 400);
     }
+
+    const previousPasswordHashes = await loadRecentPasswordHashes(userRepo, req.user.id);
+    await assertPasswordNotReused({
+      candidatePassword: newPassword,
+      currentPasswordHash: user.password,
+      previousPasswordHashes,
+      hashService: hashUtil
+    });
 
     const hashedPassword = await hashUtil.hash(newPassword);
     await userRepo.updatePassword(req.user.id, hashedPassword);
@@ -415,8 +427,8 @@ export async function changePassword(req, res) {
       // No bloquear respuesta por auditoria.
     }
 
-    return success(res, {}, "Contraseña actualizada");
+    return success(res, {}, "Contrasena actualizada");
   } catch (e) {
-    return error(res, e.message || "No se pudo actualizar la contraseña", 400);
+    return error(res, e.message || "No se pudo actualizar la contrasena", 400);
   }
 }

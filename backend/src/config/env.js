@@ -13,6 +13,8 @@ export default {
 
   JWT_SECRET: process.env.JWT_SECRET,
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "8h",
+  JWT_ISSUER: process.env.JWT_ISSUER || "assetcontrol-api",
+  JWT_AUDIENCE: process.env.JWT_AUDIENCE || "assetcontrol-web",
 
   SMTP_HOST: process.env.SMTP_HOST || "",
   SMTP_PORT: Number(process.env.SMTP_PORT) || 587,
@@ -42,6 +44,8 @@ export default {
 
   AUTH_RATE_LIMIT_WINDOW_MS: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   AUTH_RATE_LIMIT_MAX: Number(process.env.AUTH_RATE_LIMIT_MAX) || 12,
+  PASSWORD_HASH_ROUNDS: Number(process.env.PASSWORD_HASH_ROUNDS) || 12,
+  PASSWORD_HISTORY_LIMIT: Number(process.env.PASSWORD_HISTORY_LIMIT) || 5,
 
   SCHEDULER_ENABLED: process.env.SCHEDULER_ENABLED || "true",
   REPORTES_EMAILS: process.env.REPORTES_EMAILS || "",

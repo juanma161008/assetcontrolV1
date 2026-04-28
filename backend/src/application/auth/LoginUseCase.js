@@ -6,13 +6,13 @@ export default class LoginUseCase {
   }
 
   async execute(email, password) {
-    // Validación de entrada
-    if (!email || typeof email !== 'string' || email.trim() === '') {
+    // Validacion de entrada
+    if (!email || typeof email !== "string" || email.trim() === "") {
       throw new Error("Email es requerido");
     }
 
-    if (!password || typeof password !== 'string' || password.trim() === '') {
-      throw new Error("Contraseña es requerida");
+    if (!password || typeof password !== "string" || password.trim() === "") {
+      throw new Error("Contrasena es requerida");
     }
 
     const user = await this.usuarioRepo.findByEmail(email.trim().toLowerCase());
@@ -20,7 +20,7 @@ export default class LoginUseCase {
       throw new Error("Usuario no encontrado");
     }
 
-    // Verificar contraseña usando el método correcto
+    // Verificar contrasena usando el metodo correcto
     let isPasswordValid = false;
     if (typeof this.hashUtil.compareHash === "function") {
       isPasswordValid = await this.hashUtil.compareHash(password, user.password);
@@ -29,7 +29,21 @@ export default class LoginUseCase {
     }
 
     if (!isPasswordValid) {
-      throw new Error("Contraseña incorrecta");
+      throw new Error("Contrasena incorrecta");
+    }
+
+    if (
+      this.usuarioRepo &&
+      typeof this.usuarioRepo.updatePassword === "function" &&
+      typeof this.hashUtil.needsRehash === "function" &&
+      this.hashUtil.needsRehash(user.password)
+    ) {
+      try {
+        const upgradedHash = await this.hashUtil.hash(password);
+        await this.usuarioRepo.updatePassword(user.id, upgradedHash);
+      } catch {
+        // No bloquear el login si el rehash falla.
+      }
     }
 
     // Obtener permisos por rol (base)
@@ -43,11 +57,11 @@ export default class LoginUseCase {
     }
 
     // Si existe una parametrizacion explicita por usuario, sobreescribe los del rol.
-    // Solo si hay permisos personalizados definidos, caso contrario usa los del rol
+    // Solo si hay permisos personalizados definidos, caso contrario usa los del rol.
     if (this.permisoRepo && typeof this.permisoRepo.getPermisosByUsuario === "function") {
       try {
         const permisosPersonalizados = await this.permisoRepo.getPermisosByUsuario(user.id);
-        // Solo reemplazar si hay permisos personalizados explícitos (no null ni array vacío)
+        // Solo reemplazar si hay permisos personalizados explicitos (no null ni array vacio)
         if (Array.isArray(permisosPersonalizados) && permisosPersonalizados.length > 0) {
           permisos = permisosPersonalizados;
         }

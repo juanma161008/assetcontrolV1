@@ -1,15 +1,53 @@
+import env from "../../config/env.js";
 import pool from "../database/postgres.js";
 
 const DEFAULT_ROLES = [
   { id: 1, nombre: "Administrador" },
-  { id: 2, nombre: "Técnico" },
+  { id: 2, nombre: "Tecnico" },
   { id: 3, nombre: "Usuario" }
 ];
+
+const PASSWORD_HISTORY_LIMIT = Math.max(1, Number(env.PASSWORD_HISTORY_LIMIT) || 5);
+
+const isPositiveInteger = (value) => {
+  const normalized = Number(value);
+  return Number.isInteger(normalized) && normalized > 0;
+};
+
+const normalizePasswordHash = (value) => String(value || "").trim();
+
+const buildUpdateStatement = (data = {}) => {
+  const fields = [];
+  const values = [];
+
+  if (data.nombre !== undefined) {
+    fields.push(`nombre=$${values.length + 1}`);
+    values.push(data.nombre);
+  }
+
+  if (data.email !== undefined) {
+    fields.push(`email=$${values.length + 1}`);
+    values.push(data.email);
+  }
+
+  if (data.password !== undefined) {
+    fields.push(`password=$${values.length + 1}`);
+    values.push(data.password);
+  }
+
+  if (data.rol_id !== undefined) {
+    fields.push(`rol_id=$${values.length + 1}`);
+    values.push(data.rol_id);
+  }
+
+  return { fields, values };
+};
 
 export default class UsuarioPgRepository {
   constructor() {
     this.securityTableReady = false;
     this.userEntityTableReady = false;
+    this.passwordHistoryTableReady = false;
   }
 
   async ensureSecurityTable() {
@@ -50,6 +88,108 @@ export default class UsuarioPgRepository {
     }
   }
 
+  async ensurePasswordHistoryTable() {
+    if (this.passwordHistoryTableReady) {
+      return;
+    }
+
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS usuario_password_historial (
+          id SERIAL PRIMARY KEY,
+          usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+          password_hash TEXT NOT NULL,
+          creado_en TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_usuario_password_historial_usuario_fecha
+        ON usuario_password_historial (usuario_id, creado_en DESC, id DESC)
+      `);
+    } finally {
+      this.passwordHistoryTableReady = true;
+    }
+  }
+
+  async withTransaction(work) {
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+      const result = await work(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // No bloquear el error original si rollback falla.
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async insertPasswordHistoryEntry(client, userId, passwordHash) {
+    const cleanHash = normalizePasswordHash(passwordHash);
+    if (!cleanHash) {
+      return false;
+    }
+
+    await client.query(
+      `
+        INSERT INTO usuario_password_historial (usuario_id, password_hash)
+        VALUES ($1, $2)
+      `,
+      [userId, cleanHash]
+    );
+
+    return true;
+  }
+
+  async prunePasswordHistory(client, userId, limit = PASSWORD_HISTORY_LIMIT) {
+    const historyLimit = Math.max(1, Number(limit) || PASSWORD_HISTORY_LIMIT);
+
+    await client.query(
+      `
+        DELETE FROM usuario_password_historial
+        WHERE usuario_id = $1
+          AND id NOT IN (
+            SELECT id
+            FROM usuario_password_historial
+            WHERE usuario_id = $1
+            ORDER BY creado_en DESC, id DESC
+            LIMIT $2
+          )
+      `,
+      [userId, historyLimit]
+    );
+  }
+
+  async getRecentPasswordHashes(userId, limit = PASSWORD_HISTORY_LIMIT) {
+    const normalizedUserId = Number(userId);
+    if (!isPositiveInteger(normalizedUserId)) {
+      return [];
+    }
+
+    await this.ensurePasswordHistoryTable();
+    const historyLimit = Math.max(1, Number(limit) || PASSWORD_HISTORY_LIMIT);
+
+    const res = await pool.query(
+      `
+        SELECT password_hash
+        FROM usuario_password_historial
+        WHERE usuario_id = $1
+        ORDER BY creado_en DESC, id DESC
+        LIMIT $2
+      `,
+      [normalizedUserId, historyLimit]
+    );
+    return Array.isArray(res.rows) ? res.rows.map((row) => row.password_hash).filter(Boolean) : [];
+  }
+
   async findByEmail(email) {
     const res = await pool.query(
       "SELECT * FROM usuarios WHERE email=$1",
@@ -59,12 +199,35 @@ export default class UsuarioPgRepository {
   }
 
   async create(data) {
-    const res = await pool.query(
-      `INSERT INTO usuarios(nombre,email,password,rol_id)
-       VALUES($1,$2,$3,$4) RETURNING *`,
-      [data.nombre, data.email, data.password, data.rol_id]
-    );
-    return res.rows[0];
+    const normalizedPassword = normalizePasswordHash(data.password);
+
+    if (!normalizedPassword) {
+      const res = await pool.query(
+        `INSERT INTO usuarios(nombre,email,password,rol_id)
+         VALUES($1,$2,$3,$4) RETURNING *`,
+        [data.nombre, data.email, data.password, data.rol_id]
+      );
+      return res.rows[0];
+    }
+
+    await this.ensurePasswordHistoryTable();
+
+    return this.withTransaction(async (client) => {
+      const res = await client.query(
+        `INSERT INTO usuarios(nombre,email,password,rol_id)
+         VALUES($1,$2,$3,$4) RETURNING *`,
+        [data.nombre, data.email, data.password, data.rol_id]
+      );
+
+      const createdUser = res.rows[0];
+      if (!createdUser) {
+        return createdUser;
+      }
+
+      await this.insertPasswordHistoryEntry(client, createdUser.id, data.password);
+      await this.prunePasswordHistory(client, createdUser.id);
+      return createdUser;
+    });
   }
 
   async findById(id) {
@@ -76,11 +239,38 @@ export default class UsuarioPgRepository {
   }
 
   async updatePassword(id, hashedPassword) {
-    const res = await pool.query(
-      "UPDATE usuarios SET password = $1 WHERE id = $2 RETURNING *",
-      [hashedPassword, id]
-    );
-    return res.rows[0];
+    const normalizedId = Number(id);
+    const cleanHash = normalizePasswordHash(hashedPassword);
+
+    if (!isPositiveInteger(normalizedId) || !cleanHash) {
+      return null;
+    }
+
+    await this.ensurePasswordHistoryTable();
+
+    return this.withTransaction(async (client) => {
+      const currentResult = await client.query(
+        "SELECT password FROM usuarios WHERE id=$1 FOR UPDATE",
+        [normalizedId]
+      );
+      const currentHash = currentResult.rows[0]?.password || null;
+
+      const res = await client.query(
+        "UPDATE usuarios SET password = $1 WHERE id = $2 RETURNING *",
+        [cleanHash, normalizedId]
+      );
+
+      if (!res.rows[0]) {
+        return null;
+      }
+
+      if (currentHash) {
+        await this.insertPasswordHistoryEntry(client, normalizedId, currentHash);
+      }
+      await this.insertPasswordHistoryEntry(client, normalizedId, cleanHash);
+      await this.prunePasswordHistory(client, normalizedId);
+      return res.rows[0];
+    });
   }
 
   async findAll() {
@@ -91,34 +281,58 @@ export default class UsuarioPgRepository {
   }
 
   async update(id, data) {
-    const fields = [];
-    const values = [];
-
-    if (data.nombre !== undefined) {
-      fields.push(`nombre=$${values.length + 1}`);
-      values.push(data.nombre);
-    }
-
-    if (data.email !== undefined) {
-      fields.push(`email=$${values.length + 1}`);
-      values.push(data.email);
+    const normalizedId = Number(id);
+    if (!isPositiveInteger(normalizedId)) {
+      return null;
     }
 
     if (data.password !== undefined) {
-      fields.push(`password=$${values.length + 1}`);
-      values.push(data.password);
+      const normalizedPassword = normalizePasswordHash(data.password);
+      if (!normalizedPassword) {
+        return null;
+      }
+
+      await this.ensurePasswordHistoryTable();
+
+      return this.withTransaction(async (client) => {
+        const currentResult = await client.query(
+          "SELECT password FROM usuarios WHERE id=$1 FOR UPDATE",
+          [normalizedId]
+        );
+        const currentHash = currentResult.rows[0]?.password || null;
+
+        const { fields, values } = buildUpdateStatement(data);
+        if (!fields.length) {
+          return this.findById(normalizedId);
+        }
+
+        values.push(normalizedId);
+
+        const res = await client.query(
+          `UPDATE usuarios SET ${fields.join(", ")} WHERE id=$${values.length} RETURNING *`,
+          values
+        );
+
+        if (!res.rows[0]) {
+          return null;
+        }
+
+        if (currentHash) {
+          await this.insertPasswordHistoryEntry(client, normalizedId, currentHash);
+        }
+        await this.insertPasswordHistoryEntry(client, normalizedId, normalizedPassword);
+        await this.prunePasswordHistory(client, normalizedId);
+        return res.rows[0];
+      });
     }
 
-    if (data.rol_id !== undefined) {
-      fields.push(`rol_id=$${values.length + 1}`);
-      values.push(data.rol_id);
-    }
+    const { fields, values } = buildUpdateStatement(data);
 
     if (!fields.length) {
-      return this.findById(id);
+      return this.findById(normalizedId);
     }
 
-    values.push(id);
+    values.push(normalizedId);
 
     const res = await pool.query(
       `UPDATE usuarios SET ${fields.join(", ")} WHERE id=$${values.length} RETURNING *`,
@@ -209,22 +423,16 @@ export default class UsuarioPgRepository {
       )
     );
 
-    await pool.query("BEGIN");
-    try {
-      await pool.query("DELETE FROM usuario_entidades WHERE usuario_id=$1", [userId]);
+    await this.withTransaction(async (client) => {
+      await client.query("DELETE FROM usuario_entidades WHERE usuario_id=$1", [userId]);
 
       for (const entidadId of normalizedIds) {
-        await pool.query(
+        await client.query(
           "INSERT INTO usuario_entidades(usuario_id, entidad_id) VALUES($1, $2)",
           [userId, entidadId]
         );
       }
-
-      await pool.query("COMMIT");
-    } catch (error) {
-      await pool.query("ROLLBACK");
-      throw error;
-    }
+    });
 
     return this.getEntidadesByUsuario(userId);
   }

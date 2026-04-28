@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 import permisosAuth from "../src/interfaces/middleware/permisosAuth.js";
-import hashUtil, { compareHash, hash } from "../src/utils/hash.js";
+import hashUtil, { compareHash, hash, needsRehash } from "../src/utils/hash.js";
 import { success, error } from "../src/utils/response.js";
 import { generateToken, verifyToken } from "../src/config/jwt.js";
 
@@ -221,6 +221,12 @@ describe("utils/hash", () => {
   it("hashUtil.compare usa compareHash", async () => {
     const hashed = await hash("demo");
     expect(await hashUtil.compare("demo", hashed)).toBe(true);
+  });
+
+  it("needsRehash detecta hashes con costo inferior", async () => {
+    const weakHash = await hash("abc123", 10);
+    expect(needsRehash(weakHash, 12)).toBe(true);
+    expect(needsRehash(weakHash, 10)).toBe(false);
   });
 });
 
