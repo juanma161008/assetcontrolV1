@@ -55,6 +55,8 @@ const MAINTENANCE_REPORT_COLUMNS = [
   { key: "fecha", label: "Fecha" },
   { key: "numeroReporte", label: "N. reporte" },
   { key: "activo", label: "Activo" },
+  { key: "sede", label: "Sede" },
+  { key: "area", label: "Area" },
   { key: "equipo", label: "Equipo" },
   { key: "tipo", label: "Tipo" },
   { key: "estado", label: "Estado" },
@@ -68,6 +70,8 @@ const MAINTENANCE_EXCEL_COLUMN_WIDTHS = {
   fecha: 12,
   numeroReporte: 16,
   activo: 18,
+  sede: 18,
+  area: 18,
   equipo: 18,
   tipo: 14,
   estado: 14,
@@ -540,6 +544,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
 
   const [showModal, setShowModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createModalReady, setCreateModalReady] = useState(false);
   const [modalMantenimiento, setModalMantenimiento] = useState(null);
   const [showFacturaModal, setShowFacturaModal] = useState(false);
   const [isOrderLoading, setIsOrderLoading] = useState(false);
@@ -554,6 +559,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     setActivoInputNuevo("");
     setDoubleFormDrafts(null);
     setIsCreating(false);
+    setCreateModalReady(false);
   }, [defaultTecnico]);
   const resetDetailModalState = useCallback(() => {
     setModalMantenimiento(null);
@@ -565,6 +571,25 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   }, []);
   const createModalPresence = useAnimatedPresence(showCreateModal, 220, resetCreateModalState);
   const detailModalPresence = useAnimatedPresence(showModal, 220, resetDetailModalState);
+  useEffect(() => {
+    if (!showCreateModal) {
+      setCreateModalReady(false);
+      return undefined;
+    }
+
+    const raf = globalThis.requestAnimationFrame?.(() => {
+      setCreateModalReady(true);
+    });
+
+    if (typeof raf !== "number") {
+      setCreateModalReady(true);
+      return undefined;
+    }
+
+    return () => {
+      globalThis.cancelAnimationFrame?.(raf);
+    };
+  }, [showCreateModal]);
   useEffect(() => {
     const body = globalThis?.document?.body;
     if (!body) return undefined;
@@ -768,6 +793,20 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     if (isPuntoRedTipo(mantenimiento.tipo)) return "Punto de Red";
     if (isCronogramaTipo(mantenimiento.tipo)) return "Cronograma";
     return "";
+  }, [activosById]);
+
+  const getMantenimientoSede = useCallback((mantenimiento) => {
+    const activoRelacionado = activosById[String(mantenimiento.activo_id || "")];
+    return String(activoRelacionado?.sede || "").trim();
+  }, [activosById]);
+
+  const getMantenimientoArea = useCallback((mantenimiento) => {
+    const activoRelacionado = activosById[String(mantenimiento.activo_id || "")];
+    return String(
+      activoRelacionado?.areaPrincipal ||
+      activoRelacionado?.areaSecundaria ||
+      ""
+    ).trim();
   }, [activosById]);
 
   const mantenimientoCategoriaSummary = useMemo(() => {
@@ -1493,16 +1532,14 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     }));
   };
 
-  const handleActivoSelectChange = (event) => {
-    const selectedId = String(event.target.value || "");
-    const selectedOption = activosOpcionesNuevo.find((item) => item.id === selectedId);
-
+  const handleSelectCreateActivo = useCallback((option) => {
+    if (!option) return;
     setForm((prev) => ({
       ...prev,
-      activo: selectedId
+      activo: String(option.id || "")
     }));
-    setActivoInputNuevo(selectedOption?.label || "");
-  };
+    setActivoInputNuevo(option.label || "");
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -2459,6 +2496,8 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       fecha: formatFecha(mantenimiento.fecha),
       numeroReporte: getNumeroReporteMantenimiento(mantenimiento) || "-",
       activo: numeroActivo(mantenimiento) || "-",
+      sede: getMantenimientoSede(mantenimiento) || "-",
+      area: getMantenimientoArea(mantenimiento) || "-",
       equipo: getMantenimientoEquipo(mantenimiento) || "-",
       tipo: formatTipoMantenimiento(mantenimiento.tipo) || "-",
       estado: getEstadoLabelOrDash(mantenimiento),
@@ -2471,6 +2510,8 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     obtenerConsecutivoMantenimiento,
     formatFecha,
     numeroActivo,
+    getMantenimientoSede,
+    getMantenimientoArea,
     getMantenimientoEquipo
   ]);
 
@@ -2749,6 +2790,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   const openCreateModal = () => {
     setError("");
     setSuccess("");
+    setCreateModalReady(false);
     setForm(buildDefaultMaintenanceForm(tecnicoOptions[0] || defaultTecnico));
     setActivoInputNuevo("");
     setDoubleFormDrafts(null);
@@ -2756,8 +2798,25 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   };
 
   const closeCreateModal = () => {
+    setCreateModalReady(false);
     setShowCreateModal(false);
   };
+
+  useEffect(() => {
+    if (!showCreateModal) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeCreateModal();
+      }
+    };
+
+    globalThis.addEventListener("keydown", handleKeyDown);
+    return () => {
+      globalThis.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showCreateModal]);
 
   const updateDoubleDraftField = useCallback((draftKey, field, value) => {
     setDoubleFormDrafts((prev) => {
@@ -2790,6 +2849,34 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     MANTENIMIENTO_TIPO_CRONOGRAMA
   ]), []);
 
+  const selectedCreateActivoOption = useMemo(() => {
+    const selectedId = String(form.activo || "");
+    if (!selectedId) return null;
+    return (Array.isArray(activosOpcionesNuevo) ? activosOpcionesNuevo : []).find(
+      (item) => String(item.id || "") === selectedId
+    ) || null;
+  }, [activosOpcionesNuevo, form.activo]);
+
+  const createModalActivosMatches = useMemo(() => {
+    if (!createModalReady) return [];
+
+    const query = normalizeSearchValue(activoInputNuevo);
+    if (!query) return [];
+
+    const selectedLabel = String(selectedCreateActivoOption?.label || "").trim();
+    if (selectedLabel && normalizeSearchValue(selectedLabel) === query) {
+      return [];
+    }
+
+    const source = Array.isArray(activosOpcionesNuevo) ? activosOpcionesNuevo : [];
+    return source
+      .filter((item) => {
+        const haystack = normalizeSearchValue(`${item.label} ${item.id}`);
+        return haystack.includes(query);
+      })
+      .slice(0, 8);
+  }, [createModalReady, activoInputNuevo, activosOpcionesNuevo, selectedCreateActivoOption]);
+
   const createActivoField = (() => {
     if (isPuntoRedTipo(form.tipo)) {
       return (
@@ -2809,49 +2896,41 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       );
     }
 
-    if (isMobileLayout) {
-      return (
-        <div className="maintenance-form-field">
-          <label htmlFor="create-mantenimiento-activo-select">Activo asociado *</label>
-          <select
-            id="create-mantenimiento-activo-select"
-            name="activo"
-            className="activo-picker-select"
-            value={form.activo}
-            onChange={handleActivoSelectChange}
-            aria-label="Activo"
-            required
-          >
-            <option value="">Selecciona activo *</option>
-            {activosOpcionesNuevo.map((item) => (
-              <option key={`nuevo-activo-modal-${item.id}`} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      );
-    }
-
     return (
-      <div className="maintenance-form-field">
+      <div className="maintenance-form-field activo-picker-field">
         <label htmlFor="create-mantenimiento-activo-input">Activo asociado *</label>
         <input
           id="create-mantenimiento-activo-input"
           type="text"
           className="activo-picker-input"
-          placeholder="Buscar y seleccionar activo *"
+          placeholder={createModalReady ? "Buscar y seleccionar activo *" : "Cargando activos..."}
           value={activoInputNuevo}
           onChange={handleActivoInputChange}
           aria-label="Activo"
-          list="activos-nuevo-datalist-modal"
           required
         />
-        <datalist id="activos-nuevo-datalist-modal">
-          {activosOpcionesNuevo.map((item) => (
-            <option key={`nuevo-activo-modal-${item.id}`} value={item.label} />
-          ))}
-        </datalist>
+        {createModalReady && activoInputNuevo.trim() && createModalActivosMatches.length > 0 && (
+          <div className="activo-picker-results" role="listbox" aria-label="Resultados de activos">
+            {createModalActivosMatches.map((item) => (
+              <button
+                key={`nuevo-activo-modal-${item.id}`}
+                type="button"
+                className="activo-picker-option"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => handleSelectCreateActivo(item)}
+              >
+                <span className="activo-picker-option-label">{item.label}</span>
+                <span className="activo-picker-option-meta">ID {item.id}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {createModalReady && activoInputNuevo.trim() && createModalActivosMatches.length === 0 && (
+          <small className="activo-picker-empty">No hay coincidencias para esa búsqueda.</small>
+        )}
+        {createModalReady && !activoInputNuevo.trim() && (
+          <small className="activo-picker-hint">Escribe para buscar un activo y seleccionar solo uno de la lista.</small>
+        )}
       </div>
     );
   })();
@@ -3331,25 +3410,22 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       )}
 
       {createModalPresence.isMounted && hasPermission(currentUser, "CREAR_MANTENIMIENTO") && (
-        <dialog
-          open
+        <div
           className="modal-overlay maintenance-create-overlay"
           data-state={createModalPresence.phase}
-          aria-labelledby="create-maintenance-title"
-          aria-modal="true"
-          onCancel={(event) => {
-            event.preventDefault();
-            closeCreateModal();
-          }}
+          role="presentation"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               closeCreateModal();
             }
           }}
-        >
+          >
           <div
-            className="modal-content modal-dialog maintenance-create-modal maintenance-create-dialog"
+            className="modal-content maintenance-create-modal maintenance-create-dialog"
             data-state={createModalPresence.phase}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-maintenance-title"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="maintenance-modal-head">
@@ -3514,7 +3590,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
               </form>
             </div>
           </div>
-        </dialog>
+        </div>
       )}
 
       {detailModalPresence.isMounted && modalMantenimiento && (

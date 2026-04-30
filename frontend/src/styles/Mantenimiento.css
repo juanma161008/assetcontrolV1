@@ -506,6 +506,81 @@
   grid-column: span 3;
 }
 
+.maintenance-form-field.activo-picker-field {
+  grid-column: 1 / -1;
+  position: relative;
+  min-width: 0;
+  padding-bottom: 4px;
+}
+
+.activo-picker-field .activo-picker-input {
+  width: 100%;
+}
+
+.activo-picker-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: min(42vh, 320px);
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid #bfd0f0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 18px 36px rgba(2, 31, 89, 0.16);
+  overflow-x: hidden;
+}
+
+.activo-picker-option {
+  width: 100%;
+  border: 1px solid #d9e2f6;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.activo-picker-option:hover {
+  border-color: var(--brand-700);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(2, 48, 89, 0.12);
+}
+
+.activo-picker-option:focus-visible {
+  outline: 3px solid rgba(2, 48, 89, 0.2);
+  outline-offset: 2px;
+}
+
+.activo-picker-option-label {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.activo-picker-option-meta {
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.activo-picker-empty,
+.activo-picker-hint {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .form-mantenimiento > select[name="tipo"] {
   grid-column: span 2;
 }
@@ -957,11 +1032,12 @@ textarea.form-input,
 
 .maintenance-create-overlay {
   background-color: rgba(2, 15, 44, 0.58);
-  backdrop-filter: blur(10px);
+  backdrop-filter: none;
   justify-content: center;
   align-items: center;
-  animation: maintenanceOverlayIn 0.16s ease both;
-  will-change: background-color, backdrop-filter;
+  animation: maintenanceOverlayIn 0.12s ease both;
+  will-change: background-color;
+  overflow: hidden;
 }
 
 .maintenance-create-overlay[data-state="closing"],
@@ -971,12 +1047,12 @@ textarea.form-input,
 }
 
 .maintenance-create-modal {
-  animation: maintenanceCardIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
-  will-change: transform, opacity;
+  animation: maintenanceCreateFadeIn 0.12s ease both;
+  will-change: opacity;
 }
 
 .maintenance-create-modal[data-state="closing"] {
-  animation: maintenanceCardOut 0.18s ease forwards;
+  animation: maintenanceCreateFadeOut 0.1s ease forwards;
 }
 
 .maintenance-detail-overlay .modal-dialog {
@@ -1568,6 +1644,50 @@ select.modal-input {
   to {
     opacity: 0;
     transform: translate(-50%, calc(-50% + 16px)) scale(0.985);
+  }
+}
+
+@keyframes maintenanceCreateCardIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes maintenanceCreateCardOut {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.985);
+  }
+}
+
+@keyframes maintenanceCreateFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes maintenanceCreateFadeOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
   }
 }
 
@@ -2226,13 +2346,17 @@ button:focus:not(:active)::after {
   min-height: 0;
   width: min(760px, calc(100vw - 28px));
   max-height: calc(100svh - 28px);
+  animation: none;
 }
 
 .maintenance-create-modal .modal-body {
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   flex: 1 1 auto;
   min-height: 0;
+  scrollbar-gutter: stable;
+  contain: layout paint;
 }
 
 .modal-dialog {
@@ -2397,6 +2521,16 @@ button:focus:not(:active)::after {
     -webkit-overflow-scrolling: touch;
   }
 
+  .activo-picker-results {
+    position: static;
+    top: auto;
+    left: auto;
+    right: auto;
+    z-index: auto;
+    max-height: 240px;
+    margin-top: 2px;
+  }
+
   .modal-actions {
     position: sticky;
     bottom: 0;
@@ -2453,6 +2587,13 @@ button:focus:not(:active)::after {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative;
+  inset: auto;
+  top: auto;
+  left: auto;
+  transform: none;
+  margin: 0;
+  box-shadow: 0 8px 18px rgba(2, 31, 89, 0.18);
 }
 
 /* ===== MODAL RESPONSIVE HARDENING (TABLETS Y PORTATILES) ===== */
