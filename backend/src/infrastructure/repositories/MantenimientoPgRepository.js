@@ -6,6 +6,7 @@ export default class MantenimientoPgRepository {
     this.hasNumeroReporteColumnCache = null;
     this.hasCambioPartesColumnCache = null;
     this.hasChecklistColumnCache = null;
+    this.hasPointRedColumnsCache = null;
   }
 
   async hasActivoColumn() {
@@ -95,27 +96,53 @@ export default class MantenimientoPgRepository {
     }
   }
 
+  async ensurePointRedColumns() {
+    if (this.hasPointRedColumnsCache !== null) {
+      return this.hasPointRedColumnsCache;
+    }
+
+    if (process.env.NODE_ENV === "test") {
+      this.hasPointRedColumnsCache = true;
+      return true;
+    }
+
+    try {
+      await pool.query(
+        `ALTER TABLE mantenimientos
+         ADD COLUMN IF NOT EXISTS entidad_id INTEGER REFERENCES entidades(id),
+         ADD COLUMN IF NOT EXISTS sede TEXT,
+         ADD COLUMN IF NOT EXISTS area_principal TEXT`
+      );
+      this.hasPointRedColumnsCache = true;
+      return true;
+    } catch {
+      this.hasPointRedColumnsCache = false;
+      return false;
+    }
+  }
+
   async findAll() {
     const [hasActivoColumn] = await Promise.all([
       this.hasActivoColumn(),
       this.ensureNumeroReporteColumn(),
       this.ensureCambioPartesColumn(),
-      this.ensureChecklistColumn()
+      this.ensureChecklistColumn(),
+      this.ensurePointRedColumns()
     ]);
     const activoLabelExpression = hasActivoColumn
       ? "COALESCE(NULLIF(a.activo, ''), CAST(a.id AS TEXT))"
       : "CAST(a.id AS TEXT)";
 
     const res = await pool.query(
-      `SELECT
-         m.*,
-         ${activoLabelExpression} AS activo,
-         a.entidad_id AS entidad_id,
-         a.nombre AS activo_nombre,
-         a.equipo AS activo_equipo,
-         u.nombre AS tecnico
-       FROM mantenimientos m
-       LEFT JOIN activos a ON a.id = m.activo_id
+       `SELECT
+          m.*,
+          ${activoLabelExpression} AS activo,
+          a.entidad_id AS activo_entidad_id,
+          a.nombre AS activo_nombre,
+          a.equipo AS activo_equipo,
+          u.nombre AS tecnico
+        FROM mantenimientos m
+        LEFT JOIN activos a ON a.id = m.activo_id
        LEFT JOIN usuarios u ON u.id = m.tecnico_id
        ORDER BY m.fecha DESC, m.id DESC`
     );
@@ -123,21 +150,34 @@ export default class MantenimientoPgRepository {
   }
 
   async create(data) {
-    const [hasNumeroReporteColumn, hasCambioPartesColumn, hasChecklistColumn] = await Promise.all([
+    const [
+      hasNumeroReporteColumn,
+      hasCambioPartesColumn,
+      hasChecklistColumn,
+      hasPointRedColumns
+    ] = await Promise.all([
       this.ensureNumeroReporteColumn(),
       this.ensureCambioPartesColumn(),
-      this.ensureChecklistColumn()
+      this.ensureChecklistColumn(),
+      this.ensurePointRedColumns()
     ]);
     const numeroReporte = String(data?.numeroReporte ?? data?.numero_reporte ?? "").trim() || null;
     const cambioPartes = String(data?.cambio_partes ?? data?.cambioPartes ?? "").trim() || null;
     const checklist = data?.checklist ?? data?.checklist_items ?? null;
+    const entidadIdRaw = data?.entidad_id ?? data?.entidadId ?? null;
+    const entidadIdValue = entidadIdRaw === null || entidadIdRaw === undefined || String(entidadIdRaw).trim() === ""
+      ? null
+      : Number(entidadIdRaw);
+    const entidadId = Number.isFinite(entidadIdValue) ? entidadIdValue : null;
+    const sede = String(data?.sede ?? "").trim() || null;
+    const areaPrincipal = String(data?.area_principal ?? data?.areaPrincipal ?? "").trim() || null;
     let res;
 
-    if (hasNumeroReporteColumn && hasCambioPartesColumn && hasChecklistColumn) {
+    if (hasPointRedColumns && hasNumeroReporteColumn && hasCambioPartesColumn && hasChecklistColumn) {
       res = await pool.query(
         `INSERT INTO mantenimientos
-         (fecha,tipo,descripcion,activo_id,tecnico_id,estado,numero_reporte,cambio_partes,checklist)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+         (fecha,tipo,descripcion,activo_id,tecnico_id,estado,numero_reporte,cambio_partes,checklist,entidad_id,sede,area_principal)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
         [
           data.fecha,
           data.tipo,
@@ -147,14 +187,17 @@ export default class MantenimientoPgRepository {
           data.estado,
           numeroReporte,
           cambioPartes,
-          checklist ? JSON.stringify(checklist) : null
+          checklist ? JSON.stringify(checklist) : null,
+          entidadId,
+          sede,
+          areaPrincipal
         ]
       );
-    } else if (hasNumeroReporteColumn && hasChecklistColumn) {
+    } else if (hasPointRedColumns && hasNumeroReporteColumn && hasChecklistColumn) {
       res = await pool.query(
         `INSERT INTO mantenimientos
-         (fecha,tipo,descripcion,activo_id,tecnico_id,estado,numero_reporte,checklist)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+         (fecha,tipo,descripcion,activo_id,tecnico_id,estado,numero_reporte,checklist,entidad_id,sede,area_principal)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
         [
           data.fecha,
           data.tipo,
@@ -163,14 +206,17 @@ export default class MantenimientoPgRepository {
           data.tecnico_id,
           data.estado,
           numeroReporte,
-          checklist ? JSON.stringify(checklist) : null
+          checklist ? JSON.stringify(checklist) : null,
+          entidadId,
+          sede,
+          areaPrincipal
         ]
       );
-    } else if (hasCambioPartesColumn && hasChecklistColumn) {
+    } else if (hasPointRedColumns && hasCambioPartesColumn && hasChecklistColumn) {
       res = await pool.query(
         `INSERT INTO mantenimientos
-         (fecha,tipo,descripcion,activo_id,tecnico_id,estado,cambio_partes,checklist)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+         (fecha,tipo,descripcion,activo_id,tecnico_id,estado,cambio_partes,checklist,entidad_id,sede,area_principal)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
         [
           data.fecha,
           data.tipo,
@@ -179,23 +225,45 @@ export default class MantenimientoPgRepository {
           data.tecnico_id,
           data.estado,
           cambioPartes,
-          checklist ? JSON.stringify(checklist) : null
+          checklist ? JSON.stringify(checklist) : null,
+          entidadId,
+          sede,
+          areaPrincipal
         ]
       );
     } else {
-      res = await pool.query(
-        `INSERT INTO mantenimientos
-         (fecha,tipo,descripcion,activo_id,tecnico_id,estado)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [
-          data.fecha,
-          data.tipo,
-          data.descripcion,
-          data.activo_id,
-          data.tecnico_id,
-          data.estado
-        ]
-      );
+      if (hasPointRedColumns) {
+        res = await pool.query(
+          `INSERT INTO mantenimientos
+           (fecha,tipo,descripcion,activo_id,tecnico_id,estado,entidad_id,sede,area_principal)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+          [
+            data.fecha,
+            data.tipo,
+            data.descripcion,
+            data.activo_id,
+            data.tecnico_id,
+            data.estado,
+            entidadId,
+            sede,
+            areaPrincipal
+          ]
+        );
+      } else {
+        res = await pool.query(
+          `INSERT INTO mantenimientos
+           (fecha,tipo,descripcion,activo_id,tecnico_id,estado)
+           VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+          [
+            data.fecha,
+            data.tipo,
+            data.descripcion,
+            data.activo_id,
+            data.tecnico_id,
+            data.estado
+          ]
+        );
+      }
     }
     return res.rows[0];
   }

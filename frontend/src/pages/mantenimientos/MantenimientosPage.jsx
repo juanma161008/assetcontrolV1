@@ -237,13 +237,13 @@ const formatTipoMantenimiento = (value = "") => {
 const requiresActivoForTipo = (tipo = "") => !isPuntoRedTipo(tipo) && !isCronogramaTipo(tipo);
 const getNumeroReporteLabel = (tipo = "") =>
   isPuntoRedTipo(tipo)
-    ? "Código de Punto de Red *"
+    ? "Número de reporte / código (opcional)"
     : isCronogramaTipo(tipo)
       ? "Área / Dependencia *"
       : "Número de reporte / consecutivo *";
 const getNumeroReporteHelp = (tipo = "") =>
   isPuntoRedTipo(tipo)
-    ? "Usa el código alfanumérico del Punto de Red. Si lo dejas vacío, el sistema generará un PR automáticamente. Este registro se guarda sin activo asociado."
+    ? "Si el Punto de Red ya tiene número de reporte, escríbelo aquí. Si lo dejas vacío, el sistema generará un PR automáticamente."
     : isCronogramaTipo(tipo)
       ? "Registra el área o dependencia para este cronograma. Este registro se guarda sin activo asociado."
       : "Se sugiere el siguiente consecutivo del historial. Puedes modificarlo antes de guardar.";
@@ -385,10 +385,12 @@ const splitReportNumber = (value = "") => {
   };
 };
 
-const buildDefaultMaintenanceForm = (tecnico = DEFAULT_TECNICO) => ({
+const buildDefaultMaintenanceForm = (tecnico = DEFAULT_TECNICO, entidadId = "") => ({
   fecha: new Date().toISOString().split("T")[0],
   numeroReporte: "",
   activo: "",
+  entidad_id: String(entidadId || "").trim(),
+  areaPrincipal: "",
   tipo: "",
   planificacion: "Programado",
   tecnico,
@@ -517,6 +519,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
 
   const [mantenimientos, setMantenimientos] = useState([]);
   const [activos, setActivos] = useState([]);
+  const [entidades, setEntidades] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [buscar, setBuscar] = useState("");
   const deferredBuscar = useDeferredValue(buscar);
@@ -551,16 +554,16 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(() => isMobileViewport());
 
-  const [form, setForm] = useState(() => buildDefaultMaintenanceForm(defaultTecnico));
+  const [form, setForm] = useState(() => buildDefaultMaintenanceForm(defaultTecnico, entidadActivaId));
   const [doubleFormDrafts, setDoubleFormDrafts] = useState(null);
   const [activoInputNuevo, setActivoInputNuevo] = useState("");
   const resetCreateModalState = useCallback(() => {
-    setForm(buildDefaultMaintenanceForm(defaultTecnico));
+    setForm(buildDefaultMaintenanceForm(defaultTecnico, entidadActivaId));
     setActivoInputNuevo("");
     setDoubleFormDrafts(null);
     setIsCreating(false);
     setCreateModalReady(false);
-  }, [defaultTecnico]);
+  }, [defaultTecnico, entidadActivaId]);
   const resetDetailModalState = useCallback(() => {
     setModalMantenimiento(null);
     setShowFacturaModal(false);
@@ -701,6 +704,39 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     }, {});
   }, [activos]);
 
+  const entidadesById = useMemo(() => {
+    return (Array.isArray(entidades) ? entidades : []).reduce((acc, entidad) => {
+      const id = String(entidad?.id || "").trim();
+      if (!id) return acc;
+      acc[id] = {
+        ...entidad,
+        nombre: String(entidad?.nombre || "").trim(),
+        areas_primarias: Array.isArray(entidad?.areas_primarias) ? entidad.areas_primarias : [],
+        areas_secundarias: Array.isArray(entidad?.areas_secundarias) ? entidad.areas_secundarias : []
+      };
+      return acc;
+    }, {});
+  }, [entidades]);
+
+  const entidadOptions = useMemo(() => {
+    return (Array.isArray(entidades) ? entidades : [])
+      .map((entidad) => ({
+        id: String(entidad?.id || "").trim(),
+        nombre: String(entidad?.nombre || "").trim() || `Entidad #${entidad?.id || ""}`
+      }))
+      .filter((item) => item.id && item.nombre)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
+  }, [entidades]);
+
+  const targetEntidadId = String(form.entidad_id || entidadActivaId || "").trim();
+  const targetEntidad = entidadesById[targetEntidadId];
+  const primaryAreaOptions = useMemo(() => {
+    const source = Array.isArray(targetEntidad?.areas_primarias) ? targetEntidad.areas_primarias : [];
+    return Array.from(new Set(source.map((item) => String(item || "").trim()).filter(Boolean))).sort(
+      (a, b) => a.localeCompare(b, "es", { sensitivity: "base" })
+    );
+  }, [targetEntidad]);
+
   const activosFiltradosPorEntidad = useMemo(() => {
     if (!entidadActivaId) return activos;
     return (Array.isArray(activos) ? activos : []).filter(
@@ -713,8 +749,11 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     if (!entidadActivaId) return source;
     return source.filter((m) => {
       const activoRelacionado = activosById[String(m.activo_id)];
-      if (!activoRelacionado) return false;
-      return String(activoRelacionado.entidad_id || "") === entidadActivaId;
+      const entidadId = String(
+        m.entidad_id ?? m.activo_entidad_id ?? activoRelacionado?.entidad_id ?? ""
+      ).trim();
+      if (!entidadId) return false;
+      return entidadId === entidadActivaId;
     });
   }, [mantenimientos, entidadActivaId, activosById]);
 
@@ -797,12 +836,18 @@ export default function MantenimientosPage({ selectedEntidadId }) {
 
   const getMantenimientoSede = useCallback((mantenimiento) => {
     const activoRelacionado = activosById[String(mantenimiento.activo_id || "")];
-    return String(activoRelacionado?.sede || "").trim();
+    return String(
+      mantenimiento.sede ||
+      activoRelacionado?.sede ||
+      ""
+    ).trim();
   }, [activosById]);
 
   const getMantenimientoArea = useCallback((mantenimiento) => {
     const activoRelacionado = activosById[String(mantenimiento.activo_id || "")];
     return String(
+      mantenimiento.area_principal ||
+      mantenimiento.areaPrincipal ||
       activoRelacionado?.areaPrincipal ||
       activoRelacionado?.areaSecundaria ||
       ""
@@ -931,24 +976,8 @@ export default function MantenimientosPage({ selectedEntidadId }) {
 
   const mantenimientoEntidadOptions = useMemo(() => {
     if (!isAdmin) return [];
-
-    const source = Array.isArray(mantenimientosFiltradosPorEntidad) ? mantenimientosFiltradosPorEntidad : [];
-    const byId = source.reduce((acc, mantenimiento) => {
-      const activoRelacionado = activosById[String(mantenimiento.activo_id || "")];
-      const entidadId = String(activoRelacionado?.entidad_id || "").trim();
-      if (!entidadId || acc.has(entidadId)) {
-        return acc;
-      }
-
-      const entidadNombre = String(activoRelacionado?.sede || "").trim();
-      acc.set(entidadId, entidadNombre ? toProperCase(entidadNombre) : `Entidad #${entidadId}`);
-      return acc;
-    }, new Map());
-
-    return Array.from(byId.entries())
-      .map(([id, nombre]) => ({ id, nombre }))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
-  }, [isAdmin, mantenimientosFiltradosPorEntidad, activosById]);
+    return entidadOptions;
+  }, [isAdmin, entidadOptions]);
 
   const buildPuntoRedNumeroReporte = useCallback(() => {
     const source = Array.isArray(mantenimientos) ? mantenimientos : [];
@@ -1000,10 +1029,24 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     return equipoRaw ? toProperCase(equipoRaw) : "";
   }, [modalMantenimiento, activosById]);
 
+  const getEntidadNombreMantenimiento = useCallback((mantenimiento = {}) => {
+    const entidadId = String(
+      mantenimiento.entidad_id ?? mantenimiento.activo_entidad_id ?? ""
+    ).trim();
+    if (!entidadId) return String(mantenimiento.sede || "").trim();
+    return String(mantenimiento.sede || entidadesById[entidadId]?.nombre || "").trim();
+  }, [entidadesById]);
+
   const obtenerActivoMantenimiento = (mantenimiento) => {
     if (!mantenimiento.activo_id) {
       if (isPuntoRedTipo(mantenimiento?.tipo)) {
         const referencia = getNumeroReporteMantenimiento(mantenimiento);
+        const sede = getEntidadNombreMantenimiento(mantenimiento);
+        const areaPrincipal = String(
+          mantenimiento.area_principal ||
+          mantenimiento.areaPrincipal ||
+          ""
+        ).trim();
         return {
           activo: referencia || "PUNTO-RED",
           nombre: "Punto de Red",
@@ -1011,7 +1054,8 @@ export default function MantenimientosPage({ selectedEntidadId }) {
           serial: referencia || "-",
           marca: "Infraestructura",
           modelo: "Red",
-          areaPrincipal: "Redes",
+          sede: sede || "-",
+          areaPrincipal: areaPrincipal || "Área principal",
           estado: mantenimiento?.estado || "En proceso"
         };
       }
@@ -1326,6 +1370,10 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       const data = await mantenimientoService.getAll();
       const normalizados = (Array.isArray(data) ? data : []).map((item) => ({
         ...item,
+        entidad_id: item.entidad_id ?? item.activo_entidad_id ?? null,
+        sede: String(item.sede || "").trim(),
+        area_principal: String(item.area_principal || item.areaPrincipal || "").trim(),
+        areaPrincipal: String(item.area_principal || item.areaPrincipal || "").trim(),
         numeroReporte: getNumeroReporteMantenimiento(item),
         tipo: normalizePuntoRedTipo(item.tipo || ""),
         tecnico: formatTecnicoNombre(item.tecnico || DEFAULT_TECNICO)
@@ -1361,6 +1409,21 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     }
   };
 
+  const cargarEntidades = useCallback(async () => {
+    if (!isAuthenticated()) {
+      setEntidades([]);
+      return;
+    }
+
+    try {
+      const response = await httpClient.get("/api/entidades");
+      const data = response.data.data || response.data || [];
+      setEntidades(Array.isArray(data) ? data : []);
+    } catch {
+      setEntidades([]);
+    }
+  }, []);
+
   useEffect(() => {
     const init = async () => {
       const cargarUsuariosPromise = (async () => {
@@ -1378,11 +1441,11 @@ export default function MantenimientosPage({ selectedEntidadId }) {
         }
       })();
 
-      await Promise.all([cargarMantenimientos(), cargarActivos(), cargarUsuariosPromise]);
+      await Promise.all([cargarMantenimientos(), cargarActivos(), cargarEntidades(), cargarUsuariosPromise]);
       setIsLoading(false);
     };
     init();
-  }, [isAdmin]);
+  }, [isAdmin, cargarEntidades]);
 
   useEffect(() => {
     const browserWindow = getBrowserWindow();
@@ -1490,14 +1553,20 @@ export default function MantenimientosPage({ selectedEntidadId }) {
         ...(isSpecialTipo ? { activo: "" } : {})
       };
 
+      if (name === "entidad_id") {
+        nextForm.areaPrincipal = "";
+      }
+
       if (name === "tipo") {
         const previousNumeroReporte = String(prev.numeroReporte || "").trim();
         if (isDoubleSelected) {
           nextForm.numeroReporte = "";
-        } else if (isPuntoRedTipo(normalizedValue) && !previousNumeroReporte) {
-          nextForm.numeroReporte = buildPuntoRedNumeroReporte();
         } else if (!isSpecialTipo && !previousNumeroReporte) {
           nextForm.numeroReporte = buildGeneralNumeroReporte();
+        }
+
+        if (isPuntoRedTipo(normalizedValue) && !String(nextForm.entidad_id || "").trim() && entidadActivaId) {
+          nextForm.entidad_id = entidadActivaId;
         }
       }
 
@@ -1561,6 +1630,9 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     const activoEsObligatorio = requiresActivoForTipo(form.tipo);
     const isDoubleSelected = isTipoDoble(form.tipo);
     const activoId = form.activo ? Number(form.activo) : null;
+    const puntoRedEntidadId = String(form.entidad_id || entidadActivaId || "").trim();
+    const puntoRedEntidad = entidadesById[puntoRedEntidadId];
+    const puntoRedAreaPrincipal = String(form.areaPrincipal || "").trim();
 
     if (!form.fecha || !form.tipo || !form.planificacion || (activoEsObligatorio && !form.activo)) {
       setError("Campos obligatorios incompletos");
@@ -1575,6 +1647,26 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       setError("Debes seleccionar un activo existente desde la lista.");
       setIsCreating(false);
       return;
+    }
+
+    if (isPuntoRedTipo(form.tipo)) {
+      if (!puntoRedEntidadId) {
+        setError("Selecciona la sede o entidad del Punto de Red.");
+        setIsCreating(false);
+        return;
+      }
+
+      if (!puntoRedEntidad) {
+        setError("La sede o entidad seleccionada no es válida.");
+        setIsCreating(false);
+        return;
+      }
+
+      if (!puntoRedAreaPrincipal) {
+        setError("Ingresa el área principal del Punto de Red.");
+        setIsCreating(false);
+        return;
+      }
     }
 
     const fechaKey = toDateKey(form.fecha);
@@ -1612,12 +1704,26 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       const estadoInicial = getEstadoInicialByPlanificacion(form.planificacion);
       const tecnicoNombre = formatTecnicoNombre(form.tecnico || "");
       const tecnicoId = resolveTecnicoIdByNombre(tecnicoNombre);
+      const activoSeleccionado = Number.isFinite(activoId) ? activosById[String(activoId)] : null;
       const basePayload = {
         fecha: form.fecha,
         activo_id: activoEsObligatorio ? Number(form.activo) : null,
         tecnico: tecnicoNombre,
         tecnico_id: tecnicoId,
-        estado: estadoInicial
+        estado: estadoInicial,
+        entidad_id: Number.isFinite(activoId)
+          ? Number(activoSeleccionado?.entidad_id || 0) || null
+          : null,
+        sede: Number.isFinite(activoId)
+          ? String(activoSeleccionado?.sede || "").trim()
+          : "",
+        area_principal: Number.isFinite(activoId)
+          ? String(
+            activoSeleccionado?.areaPrincipal ||
+            activoSeleccionado?.areaSecundaria ||
+            ""
+          ).trim()
+          : ""
       };
 
       if (isDoubleSelected) {
@@ -1644,13 +1750,13 @@ export default function MantenimientosPage({ selectedEntidadId }) {
             descripcion: preventivoDescripcion,
             cambio_partes: preventivoCambioPartes
           },
-          {
-            ...basePayload,
-            tipo: "Correctivo",
-            numeroReporte: correctivoNumero,
-            descripcion: correctivoDescripcion,
-            cambio_partes: correctivoCambioPartes
-          }
+            {
+              ...basePayload,
+              tipo: "Correctivo",
+              numeroReporte: correctivoNumero,
+              descripcion: correctivoDescripcion,
+              cambio_partes: correctivoCambioPartes
+            }
         ]) {
           const creado = await mantenimientoService.create(payload);
           creados.push(creado);
@@ -1705,6 +1811,12 @@ export default function MantenimientosPage({ selectedEntidadId }) {
         descripcion: String(form.descripcion || "").trim(),
         cambio_partes: String(form.cambioPartes || "").trim()
       };
+
+      if (isPuntoRedTipo(form.tipo)) {
+        payload.entidad_id = Number(puntoRedEntidadId);
+        payload.sede = String(puntoRedEntidad.nombre || "").trim();
+        payload.area_principal = puntoRedAreaPrincipal;
+      }
 
       const creado = await mantenimientoService.create(payload);
       clearTimeout(backlogTimer);
@@ -2090,8 +2202,22 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   const buildMantenimientoSearchText = useCallback((mantenimiento) => {
     const numeroReporte = getNumeroReporteMantenimiento(mantenimiento);
     const activoRelacionado = activosById[String(mantenimiento.activo_id || "")];
-    const entidadNombre = String(activoRelacionado?.sede || "").trim();
-    const entidadId = String(activoRelacionado?.entidad_id || "").trim();
+    const entidadId = String(
+      mantenimiento.entidad_id ?? mantenimiento.activo_entidad_id ?? activoRelacionado?.entidad_id ?? ""
+    ).trim();
+    const entidadNombre = String(
+      mantenimiento.sede ||
+      activoRelacionado?.sede ||
+      entidadesById[entidadId]?.nombre ||
+      ""
+    ).trim();
+    const areaNombre = String(
+      mantenimiento.area_principal ||
+      mantenimiento.areaPrincipal ||
+      activoRelacionado?.areaPrincipal ||
+      activoRelacionado?.areaSecundaria ||
+      ""
+    ).trim();
 
     return normalizeSearchValue([
       mantenimiento.id,
@@ -2099,6 +2225,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       numeroActivo(mantenimiento),
       entidadNombre,
       entidadId ? `Entidad #${entidadId}` : "",
+      areaNombre,
       mantenimiento.tipo,
       getEstadoLabel(mantenimiento),
       formatTecnicoNombre(mantenimiento.tecnico || DEFAULT_TECNICO),
@@ -2106,7 +2233,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       mantenimiento.cambio_partes,
       mantenimiento.fecha
     ].join(" "));
-  }, [activosById, numeroActivo]);
+  }, [activosById, entidadesById, numeroActivo]);
 
   const mantenimientoSearchIndex = useMemo(() => {
     const term = normalizeSearchValue(deferredBuscar);
@@ -2125,7 +2252,9 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   const matchesMantenimientoFilters = useCallback((mantenimiento, term, options = {}) => {
     const { ignoreEquipo = false } = options;
     const activoRelacionado = activosById[String(mantenimiento.activo_id || "")];
-    const entidadId = String(activoRelacionado?.entidad_id || "").trim();
+    const entidadId = String(
+      mantenimiento.entidad_id ?? mantenimiento.activo_entidad_id ?? activoRelacionado?.entidad_id ?? ""
+    ).trim();
 
     if (term) {
       const searchIndex =
@@ -2531,9 +2660,10 @@ export default function MantenimientosPage({ selectedEntidadId }) {
 
   const getEntidadNombreReporte = () => {
     if (!entidadActivaId) return "Todas las entidades";
+    const entidadNombre = String(entidadesById[entidadActivaId]?.nombre || "").trim();
     const source = Array.isArray(activosFiltradosPorEntidad) ? activosFiltradosPorEntidad : [];
-    const entidadNombre = String(source[0]?.sede || "").trim();
-    return entidadNombre || `Entidad #${entidadActivaId}`;
+    const fallbackNombre = String(source[0]?.sede || "").trim();
+    return entidadNombre || fallbackNombre || `Entidad #${entidadActivaId}`;
   };
 
   const buildExportFilenameSuffix = () => {
@@ -2662,6 +2792,10 @@ export default function MantenimientosPage({ selectedEntidadId }) {
         }
       });
 
+      worksheet.autoFilter = {
+        from: { row: headerRowIndex, column: 1 },
+        to: { row: Math.max(dataStartRow + rows.length - 1, headerRowIndex), column: lastColumn }
+      };
       worksheet.views = [{ state: "frozen", ySplit: headerRowIndex }];
 
       const logos = await getReportLogos();
@@ -2791,7 +2925,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     setError("");
     setSuccess("");
     setCreateModalReady(false);
-    setForm(buildDefaultMaintenanceForm(tecnicoOptions[0] || defaultTecnico));
+    setForm(buildDefaultMaintenanceForm(tecnicoOptions[0] || defaultTecnico, entidadActivaId));
     setActivoInputNuevo("");
     setDoubleFormDrafts(null);
     setShowCreateModal(true);
@@ -2880,10 +3014,50 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   const createActivoField = (() => {
     if (isPuntoRedTipo(form.tipo)) {
       return (
-        <div className="maintenance-form-field">
-          <span className="maintenance-field-label">Activo asociado</span>
-          <small>Este Punto de Red se identifica con el código del reporte y no requiere activo. Si lo dejas vacío, el sistema generará un PR automáticamente.</small>
-        </div>
+        <>
+          <div className="maintenance-form-field">
+            <label htmlFor="create-mantenimiento-entidad">Entidad / sede *</label>
+            <select
+              id="create-mantenimiento-entidad"
+              name="entidad_id"
+              value={form.entidad_id}
+              onChange={handleChange}
+              aria-label="Entidad / sede"
+              required
+            >
+              <option value="">Selecciona una entidad</option>
+              {entidadOptions.map((entidad) => (
+                <option key={`entidad-point-red-${entidad.id}`} value={entidad.id}>
+                  {entidad.nombre}
+                </option>
+              ))}
+            </select>
+            <small>Selecciona la sede o entidad donde está instalado el Punto de Red.</small>
+          </div>
+          <div className="maintenance-form-field">
+            <label htmlFor="create-mantenimiento-area-principal">Área principal *</label>
+            <input
+              id="create-mantenimiento-area-principal"
+              name="areaPrincipal"
+              list="create-mantenimiento-area-principal-list"
+              value={form.areaPrincipal}
+              onChange={handleChange}
+              placeholder="Área principal *"
+              aria-label="Área principal"
+              required
+            />
+            <datalist id="create-mantenimiento-area-principal-list">
+              {primaryAreaOptions.map((area) => (
+                <option key={`area-principal-point-red-${area}`} value={area} />
+              ))}
+            </datalist>
+            <small>
+              {primaryAreaOptions.length > 0
+                ? "Puedes escribir o elegir una de las áreas primarias configuradas para la entidad."
+                : "Escribe el área principal manualmente si la entidad no tiene áreas configuradas."}
+            </small>
+          </div>
+        </>
       );
     }
 
@@ -3431,7 +3605,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
             <div className="maintenance-modal-head">
               <div>
                 <h2 id="create-maintenance-title">Crear mantenimiento</h2>
-                <p>Para Punto de Red usa el tipo especial. Si dejas el código vacío, el sistema generará un PR automáticamente y lo guardará sin activo asociado.</p>
+                <p>Si ya tienes el número de reporte, escríbelo aquí. Si lo dejas vacío, el sistema generará un PR automáticamente y lo guardará sin activo asociado.</p>
               </div>
               <button type="button" className="maintenance-modal-close" onClick={closeCreateModal} aria-label="Cerrar modal">
                 <svg
@@ -3463,7 +3637,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                       onChange={handleChange}
                       placeholder={getNumeroReporteLabel(form.tipo)}
                       aria-label="Número de reporte"
-                      required
+                      required={!isPuntoRedTipo(form.tipo)}
                     />
                     <small>{getNumeroReporteHelp(form.tipo)}</small>
                   </div>
@@ -3660,36 +3834,60 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                   </div>
 
                   <div className="maintenance-modal-grid">
-                    <div className="maintenance-field">
-                      <label htmlFor="detail-mantenimiento-activo">
-                        {isPuntoRedTipo(modalMantenimiento.tipo) || isCronogramaTipo(modalMantenimiento.tipo)
-                          ? "Activo asociado (opcional)"
-                          : "Activo asociado"}
-                      </label>
-                      <select
-                        id="detail-mantenimiento-activo"
-                        value={modalMantenimiento.activo_id || ""}
-                        onChange={(e) =>
-                          setModalMantenimiento({
-                            ...modalMantenimiento,
-                            activo_id: e.target.value ? Number(e.target.value) : null
-                          })
-                        }
-                      >
-                        <option value="">Selecciona un activo</option>
-                        {activosFiltradosPorEntidad.map((activo) => (
-                          <option key={activo.id} value={activo.id}>
-                            {etiquetaActivoOption(activo)}
-                          </option>
-                        ))}
-                      </select>
-                      {isPuntoRedTipo(modalMantenimiento.tipo) && (
-                        <small>Si este registro es un Punto de Red, puede quedar sin activo asociado.</small>
-                      )}
-                      {isCronogramaTipo(modalMantenimiento.tipo) && (
-                        <small>Los cronogramas generales se guardan sin activo asociado.</small>
-                      )}
-                    </div>
+                    {isPuntoRedTipo(modalMantenimiento.tipo) ? (
+                      <>
+                        <div className="maintenance-field">
+                          <label htmlFor="detail-mantenimiento-entidad">Entidad / sede</label>
+                          <input
+                            id="detail-mantenimiento-entidad"
+                            type="text"
+                            value={getEntidadNombreMantenimiento(modalMantenimiento) || "-"}
+                            readOnly
+                          />
+                        </div>
+                        <div className="maintenance-field">
+                          <label htmlFor="detail-mantenimiento-area-principal">Área principal</label>
+                          <input
+                            id="detail-mantenimiento-area-principal"
+                            type="text"
+                            value={String(
+                              modalMantenimiento.area_principal ||
+                              modalMantenimiento.areaPrincipal ||
+                              "-"
+                            ).trim()}
+                            readOnly
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="maintenance-field">
+                        <label htmlFor="detail-mantenimiento-activo">
+                          {isCronogramaTipo(modalMantenimiento.tipo)
+                            ? "Activo asociado (opcional)"
+                            : "Activo asociado"}
+                        </label>
+                        <select
+                          id="detail-mantenimiento-activo"
+                          value={modalMantenimiento.activo_id || ""}
+                          onChange={(e) =>
+                            setModalMantenimiento({
+                              ...modalMantenimiento,
+                              activo_id: e.target.value ? Number(e.target.value) : null
+                            })
+                          }
+                        >
+                          <option value="">Selecciona un activo</option>
+                          {activosFiltradosPorEntidad.map((activo) => (
+                            <option key={activo.id} value={activo.id}>
+                              {etiquetaActivoOption(activo)}
+                            </option>
+                          ))}
+                        </select>
+                        {isCronogramaTipo(modalMantenimiento.tipo) && (
+                          <small>Los cronogramas generales se guardan sin activo asociado.</small>
+                        )}
+                      </div>
+                    )}
 
                   <div className="maintenance-field">
                     <label htmlFor="detail-mantenimiento-equipo">Tipo de equipo</label>

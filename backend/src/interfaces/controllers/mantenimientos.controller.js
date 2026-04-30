@@ -5,6 +5,7 @@ import ListarMantenimientos from "../../application/mantenimientos/ListarManteni
 
 import MantenimientoPgRepository from "../../infrastructure/repositories/MantenimientoPgRepository.js";
 import ActivoPgRepository from "../../infrastructure/repositories/ActivoPgRepository.js";
+import EntidadPgRepository from "../../infrastructure/repositories/EntidadPgRepository.js";
 import UsuarioPgRepository from "../../infrastructure/repositories/UsuarioPgRepository.js";
 import LogPgRepository from "../../infrastructure/repositories/LogPgRepository.js";
 import RegistrarLog from "../../application/auditoria/RegistrarLog.js";
@@ -16,6 +17,7 @@ import { success, error } from "../../utils/response.js";
 
 const repo = new MantenimientoPgRepository();
 const activoRepo = new ActivoPgRepository();
+const entidadRepo = new EntidadPgRepository();
 const userRepo = new UsuarioPgRepository();
 const logUseCase = new RegistrarLog(new LogPgRepository());
 const notificacionRepo = new NotificacionPgRepository();
@@ -151,7 +153,7 @@ export async function listarMantenimientos(req, res) {
     }
 
     const filtrados = (Array.isArray(data) ? data : []).filter((item) => {
-      const entidadId = Number(item?.entidad_id);
+      const entidadId = Number(item?.entidad_id ?? item?.activo_entidad_id);
       if (allowedEntityIds.includes(entidadId)) {
         return true;
       }
@@ -201,6 +203,13 @@ export async function crearMantenimiento(req, res) {
 
   try {
     const allowedEntityIds = await getAllowedEntityIds(req);
+    const puntoRedPreventivo = isPuntoRedTipo(req.body?.tipo);
+    const cronogramaGeneral = isCronogramaTipo(req.body?.tipo);
+    const entidadIdRaw = req.body?.entidad_id ?? req.body?.entidadId;
+    const entidadId =
+      entidadIdRaw === null || entidadIdRaw === undefined || String(entidadIdRaw).trim() === ""
+        ? null
+        : Number(entidadIdRaw);
     if (typeof activoRepo.findById === "function") {
       const activoId = parseActivoId(req.body);
       if (Number.isInteger(activoId) && activoId > 0) {
@@ -217,18 +226,56 @@ export async function crearMantenimiento(req, res) {
       }
     }
 
+    const payload = { ...req.body };
+    if (puntoRedPreventivo) {
+      if (!Number.isInteger(entidadId) || entidadId <= 0) {
+        return error(res, "Selecciona la sede o entidad del Punto de Red", 400);
+      }
+
+      const entidad = await entidadRepo.findById(entidadId);
+      if (!entidad) {
+        return error(res, "La sede o entidad seleccionada no existe", 400);
+      }
+
+      if (allowedEntityIds !== null && !allowedEntityIds.includes(entidadId)) {
+        return error(res, "No tienes acceso a la sede o entidad seleccionada", 403);
+      }
+
+      const areaPrincipal = String(req.body?.area_principal ?? req.body?.areaPrincipal ?? "").trim();
+      if (!areaPrincipal) {
+        return error(res, "Ingresa el area principal del Punto de Red", 400);
+      }
+
+      payload.entidad_id = entidadId;
+      payload.sede = String(req.body?.sede || entidad?.nombre || "").trim() || entidad?.nombre || "";
+      payload.area_principal = areaPrincipal;
+    } else if (cronogramaGeneral) {
+      payload.entidad_id = null;
+    }
+
     const usecase = new CrearMantenimiento(repo, activoRepo, logUseCase);
-    const mant = await usecase.execute(req.body, req.user.id);
+    const mant = await usecase.execute(payload, req.user.id);
     try {
       const activoId = mant?.activo_id;
+      const esPuntoRed = isPuntoRedTipo(mant?.tipo);
       let activoNombre = null;
       if (Number.isInteger(activoId) && activoId > 0) {
         const activo = await activoRepo.findById(activoId);
         activoNombre = activo?.activo || activo?.nombre || null;
       }
 
-      const labelAdmin = activoNombre || (activoId ? `Activo #${activoId}` : "Sin activo");
-      const labelActor = activoNombre || (activoId ? "Activo" : "Sin activo");
+      const puntoRedLabel = esPuntoRed
+        ? [
+          String(mant?.sede || "").trim(),
+          String(mant?.area_principal || mant?.areaPrincipal || "").trim()
+        ].filter(Boolean).join(" / ") || "Punto de Red"
+        : "";
+      const labelAdmin = esPuntoRed
+        ? puntoRedLabel
+        : activoNombre || (activoId ? `Activo #${activoId}` : "Sin activo");
+      const labelActor = esPuntoRed
+        ? puntoRedLabel || "Punto de Red"
+        : activoNombre || (activoId ? "Activo" : "Sin activo");
       const basePayload = {
         titulo: "Nuevo mantenimiento creado",
         tipo: "MANTENIMIENTO",
@@ -270,7 +317,8 @@ export async function editarMantenimiento(req, res) {
     const allowedEntityIds = await getAllowedEntityIds(req);
     if (allowedEntityIds !== null && typeof repo.findAll === "function") {
       const actual = await getMantenimientoById(req.params.id);
-      if (!actual || !allowedEntityIds.includes(Number(actual?.entidad_id))) {
+      const actualEntidadId = Number(actual?.entidad_id ?? actual?.activo_entidad_id);
+      if (!actual || !allowedEntityIds.includes(actualEntidadId)) {
         return error(res, "No tienes acceso a ese mantenimiento", 403);
       }
 
@@ -313,7 +361,8 @@ export async function eliminarMantenimiento(req, res) {
     const allowedEntityIds = await getAllowedEntityIds(req);
     if (allowedEntityIds !== null && typeof repo.findAll === "function") {
       const actual = await getMantenimientoById(req.params.id);
-      if (!actual || !allowedEntityIds.includes(Number(actual?.entidad_id))) {
+      const actualEntidadId = Number(actual?.entidad_id ?? actual?.activo_entidad_id);
+      if (!actual || !allowedEntityIds.includes(actualEntidadId)) {
         return error(res, "No tienes acceso a ese mantenimiento", 403);
       }
     }
