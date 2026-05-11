@@ -2037,10 +2037,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
         factura: facturaPayload || {},
         numeroOrden: orden.numero || numeroOrden,
         mantenimientoConsecutivo,
-        logos: {
-          logoM5,
-          logoAssetControl
-        }
+        logos: { logoM5 }
       })
     };
 
@@ -2140,10 +2137,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       factura: facturaData || {},
       numeroOrden,
       mantenimientoConsecutivo,
-      logos: {
-        logoM5,
-        logoAssetControl
-      }
+      logos: { logoM5 }
     });
 
     const signatureText = [
@@ -2160,10 +2154,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       signatureText,
       senderName: currentUser.nombre || "",
       senderRole: "AssetControl | Microcinco S.A.S",
-      logos: {
-        logoM5,
-        logoAssetControl
-      }
+      logos: { logoM5 }
     });
 
     const textFallback = [

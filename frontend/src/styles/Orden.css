@@ -5,6 +5,7 @@
 /* =============================
    CONTENEDOR PRINCIPAL
 ============================= */
+/* Orden imprimible: formulario, firmas, consentimiento legal y modal de firma. */
 .factura {
   max-width: 900px;
   margin: auto;
@@ -19,7 +20,7 @@
 }
 
 /* =============================
-   HEADER
+   ENCABEZADO INSTITUCIONAL Y DATOS DE FACTURA
 ============================= */
 .factura-header {
   display: flex;
@@ -35,19 +36,6 @@
   align-items: center;
   gap: 12px;
   flex: 1;
-}
-
-.empresa-secundaria {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 140px;
-}
-
-.logo-secundario {
-  width: 130px;
-  height: auto;
-  object-fit: contain;
 }
 
 .logo {
@@ -88,7 +76,7 @@
 }
 
 /* =============================
-   ESTADO DE FACTURA
+   INDICADOR DE BLOQUEO / EDICION
 ============================= */
 .estado-factura {
   margin-top: 8px;
@@ -118,7 +106,7 @@
 }
 
 /* =============================
-   TÍTULO
+   TITULO PRINCIPAL DE LA ORDEN
 ============================= */
 .factura-titulo {
   text-align: center;
@@ -132,7 +120,7 @@
 }
 
 /* =============================
-   BLOQUES GENERALES
+   SECCIONES GENERALES DEL DOCUMENTO
 ============================= */
 .bloque {
   border: 1px solid #ddd;
@@ -154,7 +142,7 @@
 }
 
 /* =============================
-   GRID FLEX PARA DATOS DEL ACTIVO
+   FICHA DE DATOS DEL ACTIVO
 ============================= */
 .grid {
   display: grid;
@@ -177,7 +165,7 @@
 }
 
 /* =============================
-   CAMPOS EDITABLES
+   CAMPOS EDITABLES DEL FORMULARIO
 ============================= */
 .campo {
   display: flex;
@@ -216,7 +204,7 @@
 }
 
 /* =============================
-   CHECKBOXES
+   OPCIONES DEL TIPO DE MANTENIMIENTO
 ============================= */
 .checkboxes {
   display: flex;
@@ -241,7 +229,7 @@
 }
 
 /* =============================
-   TEXTAREA
+   AREA DE TEXTO DEL TRABAJO REALIZADO
 ============================= */
 .textarea {
   width: 100%;
@@ -263,7 +251,7 @@
 }
 
 /* =============================
-   CAMPO DE FIRMA
+   BLOQUE DE FIRMA Y PREVISUALIZACION
 ============================= */
 .campo-firma {
   display: flex;
@@ -307,7 +295,7 @@
 }
 
 /* =============================
-   PREVIEW DE FIRMA
+   PREVISUALIZACION DE FIRMA
 ============================= */
 .signature-preview {
   display: flex;
@@ -336,7 +324,7 @@
 }
 
 /* =============================
-   BOTONES DE ACCIÓN
+   BOTONES DE ACCION DEL FORMULARIO
 ============================= */
 .bloque.acciones {
   text-align: center;
@@ -434,7 +422,7 @@
 }
 
 /* =============================
-   MODALES
+   MODALES DE FIRMA Y DESBLOQUEO
 ============================= */
 .signature-modal-overlay {
   position: fixed;
@@ -517,6 +505,113 @@
 
 .signature-modal-body {
   padding: 25px;
+}
+
+.consent-modal-content {
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: min(680px, 100%);
+  max-width: 680px;
+  max-height: calc(100svh - 24px);
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+}
+
+/* Modal compacto que muestra la declaracion legal antes de abrir el lienzo de firma. */
+.consent-modal-header {
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.consent-modal-title {
+  flex: 1 1 320px;
+  font-size: 15px;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.consent-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 14px;
+  padding-right: 18px;
+}
+
+.consent-modal-intro {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #cbd8f5;
+  border-radius: 8px;
+  background: #eef4ff;
+  color: #0f2c63;
+  line-height: 1.4;
+  font-size: 13px;
+}
+
+.consent-modal-text,
+.consent-modal-closing {
+  margin: 0;
+  line-height: 1.45;
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.consent-modal-list-card {
+  padding: 10px 12px;
+  border: 1px solid #d9e3f5;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.consent-modal-list-title {
+  margin: 0 0 8px;
+  color: var(--brand-900);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.consent-modal-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.consent-modal-list li {
+  margin-bottom: 6px;
+  line-height: 1.4;
+  font-size: 13px;
+}
+
+.consent-modal-target {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+}
+
+.consent-modal-footer {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+  padding: 16px 20px;
+}
+
+.consent-modal-footer .btn-confirmar-firma,
+.consent-modal-footer .btn-cancelar-firma {
+  flex: 1 1 180px;
+}
+
+.signature-modal-overlay.consent-modal-overlay {
+  align-items: flex-start;
+  overflow-y: auto;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
 .unlock-warning {
@@ -614,7 +709,7 @@
 }
 
 /* =============================
-   FILTROS HEADER (para página de facturas)
+   FILTROS DEL ENCABEZADO EN PAGINA DE FACTURAS
 ============================= */
 .filtros-header {
   display: flex;
@@ -676,7 +771,7 @@
 }
 
 /* =============================
-   INPUTS PARA MÓVILES
+   INPUTS PARA MOVILES
 ============================= */
 .modal-inputs {
   margin: 20px 0;
@@ -715,7 +810,7 @@
 }
 
 /* =============================
-   ESTILOS DE IMPRESIÓN
+   ESTILOS DE IMPRESION PARA PAPEL / PDF
 ============================= */
 @page {
   size: A4;
@@ -792,18 +887,18 @@
     border: 1px solid #ccc;
   }
 
-  /* Asegurar que el header se imprima completo */
+  /* Evita que el encabezado se corte al imprimir. */
   .factura-header {
     page-break-inside: avoid;
     border-bottom: 2px solid #000;
   }
 
-  /* Mostrar número de factura claramente en impresión */
+  /* Deja el numero de factura legible en la version impresa. */
   .factura-info p {
     color: #000;
   }
 
-  /* Asegurar que las firmas se vean en impresión */
+  /* Mantiene visibles las firmas en el documento impreso. */
   .signature-preview {
     border: 1px solid #ccc;
     background: white;
@@ -811,7 +906,7 @@
 }
 
 /* =============================
-   RESPONSIVE DESIGN
+   RESPONSIVE DESIGN PRINCIPAL
 ============================= */
 @media (max-width: 768px) {
   .factura {
@@ -826,11 +921,6 @@
   }
 
   .empresa {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .empresa-secundaria {
     width: 100%;
     justify-content: center;
   }
@@ -912,7 +1002,7 @@
 }
 
 /* =============================
-   SOPORTE PARA SAFARI iOS
+   SOPORTE ESPECIFICO PARA SAFARI iOS
 ============================= */
 @supports (-webkit-touch-callout: none) {
   .modal-inputs input {
@@ -926,7 +1016,7 @@
   }
 }
 
-/* Prevenir el pull-to-refresh en iOS cuando hay modal abierto */
+/* Evita el pull-to-refresh en iOS cuando hay un modal abierto. */
 @supports (-webkit-touch-callout: none) {
   body.modal-open {
     overscroll-behavior-y: none;
@@ -937,7 +1027,7 @@
 }
 
 /* =============================
-   MEJORAS DE ACCESIBILIDAD
+   MEJORAS DE ACCESIBILIDAD Y CONTRASTE
 ============================= */
 .campo input:focus,
 .btn-firmar:focus,
@@ -1026,14 +1116,21 @@
   border: 2px solid var(--brand-900);
   border-radius: 10px;
   padding: 12px;
-  display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) 280px;
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 16px;
+  align-items: center;
 }
 
 .empresa {
   gap: 10px;
+  min-width: 0;
+  flex: 1 1 360px;
+}
+
+.empresa-datos {
+  min-width: 0;
 }
 
 .empresa-datos h2 {
@@ -1046,6 +1143,10 @@
   border-radius: 10px;
   padding: 10px;
   background: var(--brand-bg);
+  flex: 1 1 280px;
+  min-width: 0;
+  max-width: 320px;
+  overflow-wrap: anywhere;
 }
 
 .factura-titulo {
@@ -1122,18 +1223,6 @@
   line-height: 1.35;
 }
 
-.factura .legal-block {
-  border-color: #fecaca;
-  background: #fff5f5;
-}
-
-.legal-copy {
-  margin: 0;
-  color: #7f1d1d;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
 @media (max-width: 768px) {
   .factura-close-btn {
     top: 8px;
@@ -1153,7 +1242,15 @@
   }
 
   .factura-header {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .empresa,
+  .factura-info {
+    width: 100%;
+    max-width: 100%;
+    flex: none;
   }
 
   .factura .grid {

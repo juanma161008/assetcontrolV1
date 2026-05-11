@@ -7,6 +7,7 @@
     .replace(/'/g, "&#39;");
 }
 
+// Formatea fechas para mostrar información legible en documentos y correos.
 function formatDate(value) {
   if (!value) return "-";
   const date = new Date(value);
@@ -14,16 +15,19 @@ function formatDate(value) {
   return date.toLocaleDateString("es-CO");
 }
 
+// Convierte saltos de linea en HTML visible sin perder el escape de caracteres.
 function formatMultilineText(value) {
   return escapeHtml(value).replace(/\n/g, "<br/>");
 }
 
+// Extrae estilos embebidos para reutilizarlos dentro de la plantilla de correo.
 function extractStyleBlocks(html) {
   const source = String(html || "");
   const matches = source.match(/<style[\s\S]*?<\/style>/gi);
   return Array.isArray(matches) ? matches.join("\n") : "";
 }
 
+// Toma solo el contenido del body y elimina scripts o handlers embebidos.
 export function extractBodyContent(html) {
   const source = String(html || "");
   const match = source.match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -34,6 +38,7 @@ export function extractBodyContent(html) {
     .replace(/\son[a-z]+="[^"]*"/gi, "");
 }
 
+// Construye la firma corporativa reutilizable en correos y documentos generados desde la app.
 export function buildCorporateSignatureHtml({
   signatureText = "",
   senderName = "",
@@ -65,6 +70,7 @@ export function buildCorporateSignatureHtml({
   `.trim();
 }
 
+// Envuelve el documento en una plantilla de correo lista para enviar.
 export function buildDocumentEmailHtml({
   title = "Documento AssetControl",
   introText = "",
@@ -112,6 +118,7 @@ export function buildDocumentEmailHtml({
   `.trim();
 }
 
+// Genera la orden imprimible en HTML usando los datos de la orden, el activo y las firmas.
 export function buildMaintenanceOrderHtml({
   activo = {},
   mantenimiento = {},
@@ -157,8 +164,9 @@ export function buildMaintenanceOrderHtml({
     <style>
       body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #1f2937; }
       .doc { padding: 14px; }
-      .header { display: grid; grid-template-columns: 120px 1fr 140px; gap: 10px; align-items: center; border: 2px solid #021F59; border-radius: 10px; padding: 12px; }
+      .header { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; align-items: center; border: 2px solid #021F59; border-radius: 10px; padding: 12px; }
       .header img { max-height: 54px; max-width: 100%; object-fit: contain; }
+      .title { min-width: 0; }
       .title h1 { margin: 0; font-size: 20px; color: #021F59; }
       .title p { margin: 3px 0; font-size: 13px; }
       .section { margin-top: 12px; border: 1px solid #d9e3f5; border-radius: 10px; overflow: hidden; }
@@ -168,7 +176,6 @@ export function buildMaintenanceOrderHtml({
       .row b { color: #021F59; }
       .firmas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 10px; }
       .firma-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px; background: #f8fbff; font-size: 13px; }
-      .legal { margin-top: 12px; padding: 10px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fff7ed; color: #7c2d12; font-size: 12px; line-height: 1.45; }
     </style>
   </head>
   <body>
@@ -182,7 +189,6 @@ export function buildMaintenanceOrderHtml({
           <p><b>Activo:</b> ${escapeHtml(numeroActivo)}</p>
           <p><b>Número de reporte:</b> ${escapeHtml(numeroReporte)}</p>
         </div>
-        <img src="${escapeHtml(logos.logoAssetControl || "")}" alt="AssetControl" />
       </section>
 
       <section class="section">
@@ -229,9 +235,6 @@ export function buildMaintenanceOrderHtml({
         </div>
       </section>
 
-      <div class="legal">
-        Al firmar este documento se autoriza el tratamiento de datos personales conforme a HABEAS DATA y se declara que la información registrada no ha sido manipulada indebidamente.
-      </div>
     </div>
   </body>
 </html>

@@ -1,11 +1,12 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import logo from "../assets/logos/logom5.png";
-import logoAssetControl from "../assets/logos/logo-assetcontrol.png";
 import "../styles/Orden.css";
 import FirmaDigital from "./shared/FirmaDigital";
 import { toProperCase } from "../utils/formatters";
 
+// Componente principal de la orden de mantenimiento: guarda borradores, abre modales,
+// captura firmas y genera la versión imprimible/PDF.
 const FACTURA_STORAGE_PREFIX = "factura_mantenimiento_";
 const isKeyboardActivation = (event) => event.key === "Enter" || event.key === " ";
 
@@ -110,6 +111,26 @@ const escapeHtml = (value) =>
 const facturaTieneFirmasCompletas = (payload = {}) =>
   Boolean(String(payload.usuarioFirma || "").trim() && String(payload.autorizaFirma || "").trim());
 
+// Texto legal que se muestra antes de habilitar cualquier firma.
+const LEGAL_DECLARATION = {
+  title: "Declaración Legal y Autorización de Tratamiento de Datos Personales",
+  intro:
+    "El presente documento tiene como finalidad registrar la ejecución de actividades técnicas, la aceptación por parte del usuario habitual o área responsable y la autorización correspondiente por terceros autorizados, cuando aplique.",
+  paragraphs: [
+    "Mediante la firma física o digital de este documento, los titulares de la información autorizan de manera previa, expresa, informada e inequívoca el tratamiento de sus datos personales, conforme a lo establecido en la Constitución Política de Colombia, la Ley Estatutaria 1581 de 2012, el Decreto 1377 de 2013, la Ley 527 de 1999 sobre mensajes de datos y firmas digitales, y demás normas concordantes en materia de protección de datos personales y seguridad de la información.",
+    "Los datos recolectados serán utilizados únicamente para fines relacionados con la gestión administrativa, control de activos, soporte técnico, mantenimiento, trazabilidad de servicios, validación de identidad, cumplimiento contractual y demás finalidades legítimas asociadas a la operación de la organización."
+  ],
+  items: [
+    "Sus datos serán tratados bajo principios de legalidad, finalidad, libertad, veracidad, transparencia, acceso y seguridad.",
+    "Puede ejercer en cualquier momento los derechos de conocer, actualizar, rectificar y suprimir sus datos personales, así como revocar la autorización otorgada, conforme a la normatividad colombiana vigente.",
+    "La información suministrada será almacenada y protegida mediante controles administrativos, técnicos y organizacionales orientados a garantizar la confidencialidad, integridad y disponibilidad de la información.",
+    "Las firmas digitales, electrónicas o mecanismos de aceptación utilizados en este documento tendrán plena validez jurídica y probatoria conforme a la legislación colombiana aplicable."
+  ],
+  closing:
+    "La aceptación y firma del presente documento constituye constancia de consentimiento para el tratamiento de datos personales y aceptación de las condiciones aquí descritas."
+};
+
+// Espera a que la ventana de impresión cargue estilos e imágenes antes de lanzar el diálogo.
 const waitForPrintWindowReady = async (printWindow) => {
   if (!printWindow?.document) return;
 
@@ -166,6 +187,7 @@ export default function FacturaMantenimiento({
     [mantenimiento.fecha]
   );
 
+  // Estado local del formulario, los modales y la firma temporal que se está editando.
   const [datosFactura, setDatosFactura] = useState({
     numeroFactura: "01",
     fecha: fechaFormateadaAuto,
@@ -179,10 +201,14 @@ export default function FacturaMantenimiento({
   });
 
   const [bloqueada, setBloqueada] = useState(false);
+  const [showLegalConsentModal, setShowLegalConsentModal] = useState(false);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [pendingSignatureType, setPendingSignatureType] = useState("");
+  const [consentAnchorTop, setConsentAnchorTop] = useState(0);
   const [signatureType, setSignatureType] = useState("");
   const [tempSignature, setTempSignature] = useState("");
 
+  // Recupera un borrador guardado o crea un nuevo consecutivo cuando no existe información previa.
   useEffect(() => {
     const guardada = localStorage.getItem(storageKey);
     if (guardada) {
@@ -223,8 +249,9 @@ export default function FacturaMantenimiento({
     setBloqueada(false);
   }, [storageKey, fechaFormateadaAuto]);
 
+  // Bloquea el scroll de la pagina cuando hay un modal abierto.
   useEffect(() => {
-    if (showSignatureModal) {
+    if (showSignatureModal || showLegalConsentModal) {
       document.body.classList.add("modal-open");
     } else {
       document.body.classList.remove("modal-open");
@@ -233,8 +260,9 @@ export default function FacturaMantenimiento({
     return () => {
       document.body.classList.remove("modal-open");
     };
-  }, [showSignatureModal]);
+  }, [showSignatureModal, showLegalConsentModal]);
 
+  // Normaliza los campos editables y conserva el formato visual del formulario.
   const handleChange = (event) => {
     const { name, value } = event.target;
     const properCaseFields = new Set([
@@ -249,27 +277,46 @@ export default function FacturaMantenimiento({
   };
 
   const openSignatureModal = (type) => {
-    if (bloqueada) return;
+    if (!type) return;
     setSignatureType(type);
     setTempSignature(datosFactura[type] || "");
     setShowSignatureModal(true);
+  };
+
+  const openLegalConsentModalFromTrigger = (type, triggerElement) => {
+    if (bloqueada || !type) return;
+    const rect = triggerElement?.getBoundingClientRect?.();
+    if (rect) {
+      setConsentAnchorTop(rect.top);
+    } else {
+      setConsentAnchorTop(0);
+    }
+    setPendingSignatureType(type);
+    setShowLegalConsentModal(true);
+  };
+
+  const closeLegalConsentModal = () => {
+    setShowLegalConsentModal(false);
+    setPendingSignatureType("");
+    setConsentAnchorTop(0);
+  };
+
+  const acceptLegalConsent = () => {
+    if (!pendingSignatureType) return;
+    const nextType = pendingSignatureType;
+    closeLegalConsentModal();
+    openSignatureModal(nextType);
   };
 
   const closeSignatureModal = () => {
     setShowSignatureModal(false);
     setSignatureType("");
     setTempSignature("");
+    setPendingSignatureType("");
   };
 
   const confirmarFirma = async () => {
     if (!tempSignature || !signatureType) return;
-    if (signatureType === "usuarioFirma" || signatureType === "autorizaFirma") {
-      const consentimiento = globalThis.confirm(
-        "Aviso legal: Al firmar autorizas el tratamiento de datos personales (Habeas Data) y declaras que la información registrada no será manipulada de forma indebida. ¿Deseas continuar"
-      );
-      if (!consentimiento) return;
-    }
-
     try {
       const firmaReducida = await reducirFirma(tempSignature);
       setDatosFactura((prev) => ({
@@ -363,6 +410,7 @@ export default function FacturaMantenimiento({
     .toLowerCase();
   const cambioPartes = String(mantenimiento.cambio_partes || mantenimiento.cambioPartes || "-").trim() || "-";
 
+  // Construye el HTML final que se abre en la ventana de impresión o PDF.
   const construirDocumentoImpresion = () => {
     const renderFirma = (firma) => {
       if (!firma) {
@@ -539,15 +587,6 @@ export default function FacturaMantenimiento({
               color: #475569;
               background: #ffffff;
             }
-            .legal {
-              border: 1px solid #fecaca;
-              background: #fff1f2;
-              color: #881337;
-              border-radius: 8px;
-              padding: 10px;
-              font-size: 11px;
-              line-height: 1.4;
-            }
             @media (max-width: 900px) {
               .header {
                 grid-template-columns: 84px minmax(0, 1fr);
@@ -664,14 +703,12 @@ export default function FacturaMantenimiento({
               </div>
             </section>
 
-            <section class="legal">
-              Al firmar este documento, el usuario habitual/área y quien autoriza aceptan el tratamiento de datos personales conforme a Habeas Data y declaran que la información no ha sido manipulada de forma indebida.
-            </section>
           </div>
         </body>
       </html>`;
   };
 
+  // Abre la vista de impresión y espera a que todo cargue antes de imprimir.
   const abrirVentanaImpresion = async (modo = "print") => {
     const html = construirDocumentoImpresion();
 
@@ -702,6 +739,7 @@ export default function FacturaMantenimiento({
     abrirVentanaImpresion("pdf");
   };
 
+  // Valida que ambas firmas existan antes de devolver la orden firmada al flujo principal.
   const handleGenerarOrden = () => {
     if (!onOrdenFirmada) return;
     if (!datosFactura.usuarioFirma || !datosFactura.autorizaFirma) {
@@ -728,6 +766,7 @@ export default function FacturaMantenimiento({
     });
   };
 
+  // Muestra la firma guardada o el botón que inicia el flujo de firma.
   const renderSignaturePreview = (signatureData, type) => {
     if (signatureData) {
       return (
@@ -736,7 +775,7 @@ export default function FacturaMantenimiento({
           {!bloqueada && (
             <button
               type="button"
-              onClick={() => openSignatureModal(type)}
+              onClick={(event) => openLegalConsentModalFromTrigger(type, event.currentTarget)}
               className="btn-firmar"
             >
               Firmar De Nuevo
@@ -749,7 +788,7 @@ export default function FacturaMantenimiento({
     return (
       <button
         type="button"
-        onClick={() => openSignatureModal(type)}
+        onClick={(event) => openLegalConsentModalFromTrigger(type, event.currentTarget)}
         disabled={bloqueada}
         className="btn-firmar"
       >
@@ -772,6 +811,15 @@ export default function FacturaMantenimiento({
     autorizaFirma: "Firma de quien autoriza"
   };
   const signatureModalTitle = signatureModalTitleMap[signatureType] || "Firma";
+  const consentTargetTitle = signatureModalTitleMap[pendingSignatureType] || "Firma";
+  const consentModalStyle =
+    showLegalConsentModal && consentAnchorTop > 0
+      ? {
+          top: `${Math.max(12, consentAnchorTop - 12)}px`,
+          maxHeight: `${Math.max(180, consentAnchorTop - 24)}px`,
+          transform: "translate(-50%, -100%)"
+        }
+      : undefined;
   const handleKeyboardAction = (event, action) => {
     if (event.target !== event.currentTarget) return;
     if (!isKeyboardActivation(event)) return;
@@ -786,6 +834,7 @@ export default function FacturaMantenimiento({
           Cerrar
         </button>
       )}
+      {/* Encabezado institucional con los datos principales de la factura. */}
       <div className="factura-header">
         <div className="empresa">
           <img src={logo} className="logo" alt="MICROCINCO SAS" />
@@ -794,10 +843,6 @@ export default function FacturaMantenimiento({
             <p>MEDELLIN, ANTIOQUIA</p>
             <p>MDAITAGUI@MICROCINCO.COM</p>
           </div>
-        </div>
-
-        <div className="empresa-secundaria">
-          <img src={logoAssetControl} className="logo-secundario" alt="AssetControl" />
         </div>
 
         <div className="factura-info">
@@ -816,6 +861,7 @@ export default function FacturaMantenimiento({
 
       <h1 className="factura-titulo">Orden De Mantenimiento</h1>
 
+      {/* Datos del activo que sostienen la orden. */}
       <div className="bloque">
         <h3>Datos Del Activo</h3>
         <div className="grid">
@@ -836,6 +882,7 @@ export default function FacturaMantenimiento({
         </div>
       </div>
 
+      {/* Datos y firma del usuario habitual. */}
       <div className="bloque">
         <h3>Usuario Habitual</h3>
         <div className="grid">
@@ -855,12 +902,13 @@ export default function FacturaMantenimiento({
             <label>Firma usuario habitual / área</label>
             {renderSignaturePreview(datosFactura.usuarioFirma, "usuarioFirma")}
             <p className="legal-notice">
-              Al firmar, el usuario habitual o responsable de área acepta el tratamiento de Habeas Data y declara que no ha manipulado indebidamente la información del activo.
+              Antes de guardar la firma se mostrará la declaración legal completa para su aceptación.
             </p>
           </div>
         </div>
       </div>
 
+      {/* Datos y firma de quien autoriza la intervención. */}
       <div className="bloque">
         <h3>Autorización</h3>
         <div className="grid">
@@ -879,6 +927,7 @@ export default function FacturaMantenimiento({
         </div>
       </div>
 
+      {/* Tipo de mantenimiento marcado en la orden. */}
       <div className="bloque">
         <h3>Tipo De Mantenimiento</h3>
         <div className="checkboxes">
@@ -889,6 +938,7 @@ export default function FacturaMantenimiento({
         </div>
       </div>
 
+      {/* Descripción del trabajo realizado. */}
       <div className="bloque">
         <h3>Trabajo Realizado</h3>
         <div className="grid">
@@ -897,6 +947,7 @@ export default function FacturaMantenimiento({
         <textarea className="textarea" value={mantenimiento.descripcion || "Sin descripción"} readOnly />
       </div>
 
+      {/* Técnico responsable y fecha de intervención. */}
       <div className="bloque">
         <h3>Responsable</h3>
         <div className="grid">
@@ -905,13 +956,7 @@ export default function FacturaMantenimiento({
         </div>
       </div>
 
-      <div className="bloque legal-block">
-        <h3>Declaración Legal</h3>
-        <p className="legal-copy">
-          Este documento registra la intervención técnica, la aceptación del usuario habitual o área responsable y la autorización de un tercero autorizado. Las firmas digitales tienen validez de consentimiento para tratamiento de datos personales conforme a Habeas Data y políticas de seguridad de la información.
-        </p>
-      </div>
-
+      {/* Acciones finales: guardar, bloquear, imprimir o cerrar. */}
       <div className="bloque acciones">
         {!bloqueada ? (
           <button onClick={guardarFactura} className="btn-guardar" type="button">
@@ -954,6 +999,64 @@ export default function FacturaMantenimiento({
         )}
       </div>
 
+      {/* Modal legal que aparece antes de permitir firmar. */}
+      {showLegalConsentModal && (
+        <div
+          className="signature-modal-overlay consent-modal-overlay"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) closeLegalConsentModal();
+          }}
+          onKeyDown={(event) => handleKeyboardAction(event, closeLegalConsentModal)}
+          role="button"
+          tabIndex={0}
+          aria-label="Cerrar consentimiento legal"
+        >
+          <div
+          className="signature-modal-content consent-modal-content"
+          style={consentModalStyle}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="legal-consent-title"
+        >
+            <div className="signature-modal-header consent-modal-header">
+              <h3 id="legal-consent-title" className="consent-modal-title">
+                {LEGAL_DECLARATION.title}
+              </h3>
+              <button className="close-modal" onClick={closeLegalConsentModal} type="button" aria-label="Cerrar">
+                Cerrar
+              </button>
+            </div>
+            <div className="signature-modal-body consent-modal-body">
+              <p className="consent-modal-intro">{LEGAL_DECLARATION.intro}</p>
+              {LEGAL_DECLARATION.paragraphs.map((paragraph) => (
+                <p className="consent-modal-text" key={paragraph}>
+                  {paragraph}
+                </p>
+              ))}
+              <div className="consent-modal-list-card">
+                <p className="consent-modal-list-title">El titular declara conocer que:</p>
+                <ul className="consent-modal-list">
+                  {LEGAL_DECLARATION.items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <p className="consent-modal-closing">{LEGAL_DECLARATION.closing}</p>
+              <p className="consent-modal-target">Vas a continuar con: {consentTargetTitle}</p>
+            </div>
+            <div className="signature-modal-footer consent-modal-footer">
+              <button className="btn-confirmar-firma" onClick={acceptLegalConsent} type="button">
+                Acepto y continuar
+              </button>
+              <button className="btn-cancelar-firma" onClick={closeLegalConsentModal} type="button">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal del lienzo de firma digital. */}
       {showSignatureModal && (
         <div
           className="signature-modal-overlay"

@@ -323,7 +323,8 @@
 }
 
 @media (max-width: 640px) {
-  .usuarios-page {
+/* Estilos de la gestion de usuarios, listados y modales. */
+.usuarios-page {
     gap: 12px;
   }
 

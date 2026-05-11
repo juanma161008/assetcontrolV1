@@ -66,7 +66,9 @@ async function loadOrdenesController() {
 
   const stubs = {
     crearExecute: vi.fn(),
-    firmarExecute: vi.fn()
+    firmarExecute: vi.fn(),
+    repoFindById: vi.fn().mockRejectedValue(new Error("repoFindById no configurado")),
+    userGetEntidadesByUsuario: vi.fn().mockResolvedValue([])
   };
 
   vi.doMock("../src/application/ordenes/CrearOrden.js", () => ({
@@ -86,7 +88,19 @@ async function loadOrdenesController() {
   }));
 
   vi.doMock("../src/infrastructure/repositories/OrdenPgRepository.js", () => ({
-    default: class {}
+    default: class {
+      findById(...args) {
+        return stubs.repoFindById(...args);
+      }
+    }
+  }));
+
+  vi.doMock("../src/infrastructure/repositories/UsuarioPgRepository.js", () => ({
+    default: class {
+      getEntidadesByUsuario(...args) {
+        return stubs.userGetEntidadesByUsuario(...args);
+      }
+    }
   }));
 
   vi.doMock("../src/infrastructure/repositories/LogPgRepository.js", () => ({
@@ -262,6 +276,31 @@ describe("ordenes.controller", () => {
 
     expect(stubs.firmarExecute).toHaveBeenCalledWith(3, "abc", 15);
     expect(res.statusCode).toBe(200);
+  });
+
+  it("firmarOrden bloquea cuando la orden no pertenece a las entidades permitidas", async () => {
+    const { firmarOrden, stubs } = await loadOrdenesController();
+    const res = createRes();
+
+    stubs.userGetEntidadesByUsuario.mockResolvedValue([{ id: 1 }]);
+    stubs.repoFindById.mockResolvedValue({
+      id: 3,
+      entidades_ids: [9],
+      creado_por: 77
+    });
+
+    await firmarOrden(
+      {
+        params: { id: 3 },
+        body: { firmaBase64: "abc" },
+        user: { id: 15, rol_id: 2 }
+      },
+      res
+    );
+
+    expect(stubs.firmarExecute).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(403);
+    expect(res.payload.message).toBe("No tienes acceso a esa orden");
   });
 
   it("firmarOrden responde error", async () => {

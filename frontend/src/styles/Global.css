@@ -6,6 +6,7 @@
 }
 
 /* ALTURA TOTAL */
+/* Base global compartida: reset, tipografia, variables y utilidades comunes. */
 html, body, #root {
   height: 100%;
   width: 100%;

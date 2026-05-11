@@ -3,9 +3,9 @@ import PropTypes from "prop-types";
 import httpClient from "../../services/httpClient";
 import { getCurrentUser, isAuthenticated } from "../../services/authService";
 import { hasPermission } from "../../utils/permissions";
+import FirmaDigital from "../../components/shared/FirmaDigital";
 import { buildMaintenanceOrderHtml } from "../../utils/emailDocuments";
 import logoM5 from "../../assets/logos/logom5.png";
-import logoAssetControl from "../../assets/logos/logo-assetcontrol.png";
 import "../../styles/OrdenesPage.css";
 
 const DIGIT_GROUP_REGEX = /\d+/g;
@@ -51,6 +51,37 @@ const extraerConsecutivoOrden = (value) => {
   return Number.isInteger(num) && num > 0 ? num : null;
 };
 
+const reducirFirma = (dataURL) =>
+  new Promise((resolve, reject) => {
+    if (!dataURL) {
+      resolve("");
+      return;
+    }
+
+    if (dataURL.includes("image/jpeg")) {
+      resolve(dataURL);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = 220;
+        canvas.height = 90;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.72));
+      } catch (error) {
+        reject(error);
+      }
+    };
+    img.onerror = reject;
+    img.src = dataURL;
+  });
+
 export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }) {
   const [ordenes, setOrdenes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +93,10 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
   const [downloadingId, setDownloadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [selectedOrden, setSelectedOrden] = useState(null);
+  const [ordenParaFirmar, setOrdenParaFirmar] = useState(null);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [tempSignature, setTempSignature] = useState("");
+  const [signingOrderId, setSigningOrderId] = useState(null);
   const deferredSearchGlobal = useDeferredValue(searchGlobal);
   const deferredSearchEntidad = useDeferredValue(searchEntidad);
   const deferredSearchActivo = useDeferredValue(searchActivo);
@@ -92,6 +127,18 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
   useEffect(() => {
     fetchOrdenes();
   }, []);
+
+  useEffect(() => {
+    if (showSignatureModal) {
+      document.body.classList.add("modal-open");
+    } else {
+      document.body.classList.remove("modal-open");
+    }
+
+    return () => {
+      document.body.classList.remove("modal-open");
+    };
+  }, [showSignatureModal]);
 
   const formatFecha = (fecha) => {
     if (!fecha) return "-";
@@ -261,19 +308,16 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
       const numeroOrden = String(parsed.numero || orden.numero || `OT-${ordenId}`).trim();
       const mantenimientoConsecutivo =
         parsed.mantenimientoConsecutivo || parsed.mantenimiento.id || null;
-      const html =
-        parsed.documentoHtml ||
-        buildMaintenanceOrderHtml({
-          activo: parsed.activo || {},
-          mantenimiento: parsed.mantenimiento || {},
-          factura: parsed.factura || {},
-          numeroOrden,
-          mantenimientoConsecutivo,
-          logos: {
-            logoM5,
-            logoAssetControl
-          }
-        });
+      const html = buildMaintenanceOrderHtml({
+        activo: parsed.activo || {},
+        mantenimiento: parsed.mantenimiento || {},
+        factura: parsed.factura || {},
+        numeroOrden,
+        mantenimientoConsecutivo,
+        logos: {
+          logoM5
+        }
+      });
 
       return abrirDocumentoOrden(html, numeroOrden, modo);
     } catch {
@@ -416,6 +460,82 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
     }
   };
 
+  const canSignOrders = useMemo(
+    () =>
+      hasPermission(currentUser, "GENERAR_ORDEN") ||
+      hasPermission(currentUser, "FIRMAR_ORDEN") ||
+      hasPermission(currentUser, "CREAR_MANTENIMIENTO"),
+    [currentUser]
+  );
+
+  const openSignatureModal = (orden) => {
+    if (!orden?.id || orden?.firmada) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setOrdenParaFirmar(orden);
+    setTempSignature("");
+    setShowSignatureModal(true);
+  };
+
+  const closeSignatureModal = () => {
+    if (signingOrderId) {
+      return;
+    }
+
+    setShowSignatureModal(false);
+    setOrdenParaFirmar(null);
+    setTempSignature("");
+  };
+
+  const firmarOrdenSeleccionada = async () => {
+    const ordenActual = ordenParaFirmar;
+    if (!ordenActual?.id || !tempSignature || signingOrderId) {
+      return;
+    }
+
+    const ordenId = ordenActual.id;
+    const numeroOrden = ordenActual.numero || `#${ordenId}`;
+
+    setError("");
+    setSuccess("");
+    setSigningOrderId(ordenId);
+
+    try {
+      const firmaReducida = await reducirFirma(tempSignature);
+      await httpClient.post(`/api/ordenes/${ordenId}/firmar`, {
+        firmaBase64: firmaReducida || tempSignature
+      });
+
+      setOrdenes((prev) =>
+        Array.isArray(prev)
+          ? prev.map((item) =>
+              Number(item.id) === Number(ordenId)
+                ? { ...item, firmada: true, estado: "Firmada" }
+                : item
+            )
+          : prev
+      );
+      setSelectedOrden((prev) =>
+        prev && Number(prev.id) === Number(ordenId)
+          ? { ...prev, firmada: true, estado: "Firmada" }
+          : prev
+      );
+
+      setShowSignatureModal(false);
+      setOrdenParaFirmar(null);
+      setTempSignature("");
+      setSuccess(`Orden ${numeroOrden} firmada correctamente`);
+      await fetchOrdenes();
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.response?.data?.error || "No se pudo firmar la orden");
+    } finally {
+      setSigningOrderId(null);
+    }
+  };
+
   const stats = useMemo(() => {
     const source = Array.isArray(filteredOrdenes) ? filteredOrdenes : [];
     return {
@@ -500,12 +620,21 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
 
   return (
     <div className="ordenes-page">
-      <h1>Órdenes de trabajo</h1>
-      <p className="ordenes-subtitle">
-        {isAdmin
-          ? "Vista de administración: puedes ver y eliminar cualquier orden."
-          : "Se muestran las órdenes generadas por tu usuario."}
-      </p>
+      <div className="ordenes-page-hero">
+        <div className="ordenes-page-brand">
+          <div className="ordenes-page-logos" aria-hidden="true">
+            <img src={logoM5} alt="" className="ordenes-page-logo ordenes-page-logo-m5" />
+          </div>
+          <div className="ordenes-page-copy">
+            <h1>Órdenes de trabajo</h1>
+            <p className="ordenes-subtitle">
+              {isAdmin
+                ? "Vista de administración: puedes ver y eliminar cualquier orden."
+                : "Se muestran las órdenes generadas por tu usuario."}
+            </p>
+          </div>
+        </div>
+      </div>
 
       <div className="ordenes-stats">
         <div className="ordenes-stat">Total: {stats.total}</div>
@@ -593,6 +722,15 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
                   >
                     Ver
                   </button>
+                  {canSignOrders && !orden.firmada && (
+                    <button
+                      className="btn-action"
+                      onClick={() => openSignatureModal(orden)}
+                      title="Firmar orden"
+                    >
+                      Firmar
+                    </button>
+                  )}
                   <button
                     className="btn-action"
                     onClick={() => descargarOrden(orden)}
@@ -669,12 +807,82 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
               <button className="btn-action" onClick={() => imprimirOrden(selectedOrden)}>
                 Imprimir
               </button>
+              {canSignOrders && !selectedOrden.firmada && (
+                <button className="btn-action" onClick={() => openSignatureModal(selectedOrden)}>
+                  Firmar
+                </button>
+              )}
               <button className="btn-action" onClick={() => setSelectedOrden(null)}>
                 Cerrar
               </button>
             </div>
           </div>
         </dialog>
+      )}
+
+      {showSignatureModal && ordenParaFirmar && (
+        <div
+          className="ordenes-sign-modal-overlay"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeSignatureModal();
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="Cerrar modal de firma"
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              closeSignatureModal();
+            }
+          }}
+        >
+          <div className="ordenes-sign-modal-card" role="dialog" aria-modal="true" aria-labelledby="orden-sign-title">
+            <div className="ordenes-sign-modal-header">
+              <h2 id="orden-sign-title">
+                Firmar orden {ordenParaFirmar.numero || `#${ordenParaFirmar.id}`}
+              </h2>
+              <button
+                className="ordenes-sign-close-btn"
+                onClick={closeSignatureModal}
+                type="button"
+                aria-label="Cerrar modal"
+                disabled={signingOrderId === ordenParaFirmar.id}
+              >
+                ×
+              </button>
+            </div>
+            <div className="ordenes-sign-modal-body">
+              <p className="ordenes-sign-caption">
+                Dibuja tu firma para registrar la aprobación de esta orden.
+              </p>
+              <FirmaDigital
+                value={tempSignature}
+                onChange={setTempSignature}
+                disabled={signingOrderId === ordenParaFirmar.id}
+                label="Dibuja tu firma"
+              />
+            </div>
+            <div className="ordenes-sign-modal-footer">
+              <button
+                className="ordenes-sign-confirm-btn"
+                onClick={firmarOrdenSeleccionada}
+                type="button"
+                disabled={!tempSignature || signingOrderId === ordenParaFirmar.id}
+              >
+                {signingOrderId === ordenParaFirmar.id ? "Firmando..." : "Confirmar firma"}
+              </button>
+              <button
+                className="ordenes-sign-cancel-btn"
+                onClick={closeSignatureModal}
+                type="button"
+                disabled={signingOrderId === ordenParaFirmar.id}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

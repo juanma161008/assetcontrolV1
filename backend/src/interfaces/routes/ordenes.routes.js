@@ -21,7 +21,7 @@ router.post(
 
 router.post(
   "/:id/firmar",
-  permisosAuth(["FIRMAR_ORDEN", "CREAR_MANTENIMIENTO"]),
+  permisosAuth(["FIRMAR_ORDEN", "CREAR_MANTENIMIENTO", "GENERAR_ORDEN"]),
   controller.firmarOrden,
   auditLogger("FIRMAR", "ORDEN")
 );

@@ -11,6 +11,9 @@
   gap: 1rem;
 }
 
+/* ===========================================
+   ENCABEZADO Y ACCIONES PRINCIPALES
+   =========================================== */
 .cronograma-header {
   display: flex;
   align-items: center;
@@ -67,6 +70,9 @@
   box-shadow: 0 8px 20px rgba(30, 58, 138, 0.24);
 }
 
+/* ===========================================
+   RESUMEN DE ESTADO DEL CRONOGRAMA
+   =========================================== */
 .cronograma-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -119,6 +125,9 @@
   font-size: 0.9rem;
 }
 
+/* ===========================================
+   FILTROS Y ALERTAS DE LISTADO
+   =========================================== */
 .cronograma-filters {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr;
@@ -139,6 +148,9 @@
   gap: 0.5rem;
 }
 
+/* ===========================================
+   ACCIONES MASIVAS Y PERIODICIDAD
+   =========================================== */
 .cronograma-bulk {
   display: flex;
   align-items: center;
@@ -238,6 +250,9 @@
   color: #334155;
 }
 
+/* ===========================================
+   FORMULARIO MANUAL DE PROGRAMACION
+   =========================================== */
 .cronograma-manual-panel {
   border: 1px solid #cfdcf5;
   border-radius: 16px;
@@ -653,6 +668,9 @@
   color: #334155;
 }
 
+/* ===========================================
+   MODAL DE DETALLE DE TAREA
+   =========================================== */
 .cronograma-detail-overlay {
   position: fixed;
   inset: 0;
@@ -966,6 +984,7 @@
 }
 
 /* ===== CRONOGRAMA VISUAL POLISH ===== */
+/* Vista de cronograma y agenda visual del modulo. */
 .cronograma-page {
   border: 1px solid #dbe5f4;
   background:

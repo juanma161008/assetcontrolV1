@@ -5,7 +5,7 @@ import "../../styles/firma.css";
 function getPointerPosition(event, canvas) {
   const rect = canvas.getBoundingClientRect();
 
-  if (event.touches.length) {
+  if (event.touches && event.touches.length) {
     return {
       x: event.touches[0].clientX - rect.left,
       y: event.touches[0].clientY - rect.top
