@@ -1,10 +1,6 @@
 function escapePdfText(value = "") {
-  return String(value)
-    .replaceAll("\\", "\\\\")
-    .replaceAll("(", "\\(")
-    .replaceAll(")", "\\)");
+  return String(value).replace(/[\\()]/g, String.raw`\$&`);
 }
-
 function toLines(orden = {}) {
   const lines = [
     "MICROCINCO & CIA LTDA - ORDEN DE TRABAJO",

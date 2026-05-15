@@ -204,7 +204,6 @@ export default function FacturaMantenimiento({
   const [showLegalConsentModal, setShowLegalConsentModal] = useState(false);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [pendingSignatureType, setPendingSignatureType] = useState("");
-  const [consentAnchorTop, setConsentAnchorTop] = useState(0);
   const [signatureType, setSignatureType] = useState("");
   const [tempSignature, setTempSignature] = useState("");
 
@@ -283,14 +282,8 @@ export default function FacturaMantenimiento({
     setShowSignatureModal(true);
   };
 
-  const openLegalConsentModalFromTrigger = (type, triggerElement) => {
+  const openLegalConsentModal = (type) => {
     if (bloqueada || !type) return;
-    const rect = triggerElement?.getBoundingClientRect?.();
-    if (rect) {
-      setConsentAnchorTop(rect.top);
-    } else {
-      setConsentAnchorTop(0);
-    }
     setPendingSignatureType(type);
     setShowLegalConsentModal(true);
   };
@@ -298,7 +291,6 @@ export default function FacturaMantenimiento({
   const closeLegalConsentModal = () => {
     setShowLegalConsentModal(false);
     setPendingSignatureType("");
-    setConsentAnchorTop(0);
   };
 
   const acceptLegalConsent = () => {
@@ -775,7 +767,7 @@ export default function FacturaMantenimiento({
           {!bloqueada && (
             <button
               type="button"
-              onClick={(event) => openLegalConsentModalFromTrigger(type, event.currentTarget)}
+              onClick={() => openLegalConsentModal(type)}
               className="btn-firmar"
             >
               Firmar De Nuevo
@@ -788,7 +780,7 @@ export default function FacturaMantenimiento({
     return (
       <button
         type="button"
-        onClick={(event) => openLegalConsentModalFromTrigger(type, event.currentTarget)}
+        onClick={() => openLegalConsentModal(type)}
         disabled={bloqueada}
         className="btn-firmar"
       >
@@ -812,14 +804,6 @@ export default function FacturaMantenimiento({
   };
   const signatureModalTitle = signatureModalTitleMap[signatureType] || "Firma";
   const consentTargetTitle = signatureModalTitleMap[pendingSignatureType] || "Firma";
-  const consentModalStyle =
-    showLegalConsentModal && consentAnchorTop > 0
-      ? {
-          top: `${Math.max(12, consentAnchorTop - 12)}px`,
-          maxHeight: `${Math.max(180, consentAnchorTop - 24)}px`,
-          transform: "translate(-50%, -100%)"
-        }
-      : undefined;
   const handleKeyboardAction = (event, action) => {
     if (event.target !== event.currentTarget) return;
     if (!isKeyboardActivation(event)) return;
@@ -1012,12 +996,11 @@ export default function FacturaMantenimiento({
           aria-label="Cerrar consentimiento legal"
         >
           <div
-          className="signature-modal-content consent-modal-content"
-          style={consentModalStyle}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="legal-consent-title"
-        >
+            className="signature-modal-content consent-modal-content"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="legal-consent-title"
+          >
             <div className="signature-modal-header consent-modal-header">
               <h3 id="legal-consent-title" className="consent-modal-title">
                 {LEGAL_DECLARATION.title}

@@ -1,8 +1,11 @@
+const PDF_ESCAPE_MAP = {
+  "\\": String.raw`\\`,
+  "(": String.raw`\(`,
+  ")": String.raw`\)`
+};
+
 const escapePdfText = (value = "") =>
-  String(value)
-    .replaceAll("\\", "\\\\")
-    .replaceAll("(", "\\(")
-    .replaceAll(")", "\\)");
+  String(value).replaceAll(/[\\()]/g, (character) => PDF_ESCAPE_MAP[character]);
 
 const toLines = (report = {}) => {
   const lines = [

@@ -74,7 +74,7 @@ function App() {
   const mustChangePassword = Boolean(user?.debe_cambiar_password);
 
   useEffect(() => {
-    if (typeof window === "undefined") return undefined;
+    if (globalThis.window === undefined) return undefined;
 
     const modalSelector = [
       ".modal-overlay",
@@ -87,7 +87,7 @@ function App() {
       ".unlock-modal-content"
     ].join(", ");
 
-    const { document } = window;
+    const { document } = globalThis.window;
     const { body } = document;
     let rafId = 0;
 

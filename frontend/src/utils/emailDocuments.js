@@ -1,10 +1,10 @@
 ﻿function escapeHtml(value) {
   return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 // Formatea fechas para mostrar información legible en documentos y correos.
@@ -17,7 +17,7 @@ function formatDate(value) {
 
 // Convierte saltos de linea en HTML visible sin perder el escape de caracteres.
 function formatMultilineText(value) {
-  return escapeHtml(value).replace(/\n/g, "<br/>");
+  return escapeHtml(value).replaceAll("\n", "<br/>");
 }
 
 // Extrae estilos embebidos para reutilizarlos dentro de la plantilla de correo.
@@ -30,7 +30,7 @@ function extractStyleBlocks(html) {
 // Toma solo el contenido del body y elimina scripts o handlers embebidos.
 export function extractBodyContent(html) {
   const source = String(html || "");
-  const match = source.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const match = /<body[^>]*>([\s\S]*)<\/body>/i.exec(source);
   const raw = match?.[1] || source;
 
   return String(raw)

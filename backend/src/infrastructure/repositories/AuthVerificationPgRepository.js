@@ -1,9 +1,8 @@
 import pool from "../database/postgres.js";
 
 export default class AuthVerificationPgRepository {
-  constructor() {
-    this.tableReady = false;
-  }
+  tableReady = false;
+  
 
   async ensureTable() {
     if (this.tableReady) {
