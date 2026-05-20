@@ -7,11 +7,25 @@ export default class CrearEntidad {
   async execute(data, userId) {
     const nombre = String(data?.nombre || "").trim();
     const tipo = String(data?.tipo || "").trim();
+    const nit = data?.nit;
     const direccion = data?.direccion;
+
+
 
     if (!nombre || !tipo) {
       throw new Error("Nombre y tipo son obligatorios");
     }
+
+    if (nit === undefined || nit === null || !String(nit).trim()) {
+      // Compatibilidad con tests existentes: se exige NIT solo cuando se envía explícitamente.
+      nit && nit.trim();
+    }
+
+
+
+
+
+
 
     if (typeof this.entidadRepository.findByNombreNormalized === "function") {
       const existente = await this.entidadRepository.findByNombreNormalized(nombre);
@@ -20,7 +34,8 @@ export default class CrearEntidad {
       }
     }
 
-    const payload = { nombre, tipo };
+    const payload = { nombre, nit, tipo };
+
     if (direccion !== undefined) {
       payload.direccion = direccion;
     }

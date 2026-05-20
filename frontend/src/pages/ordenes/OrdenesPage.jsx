@@ -93,10 +93,11 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
   const [downloadingId, setDownloadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [selectedOrden, setSelectedOrden] = useState(null);
-  const [ordenParaFirmar, setOrdenParaFirmar] = useState(null);
+  const [selectedOrdenIds, setSelectedOrdenIds] = useState([]);
+  const [ordenesParaFirmar, setOrdenesParaFirmar] = useState([]);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [tempSignature, setTempSignature] = useState("");
-  const [signingOrderId, setSigningOrderId] = useState(null);
+  const [signingOrderIds, setSigningOrderIds] = useState([]);
   const deferredSearchGlobal = useDeferredValue(searchGlobal);
   const deferredSearchEntidad = useDeferredValue(searchEntidad);
   const deferredSearchActivo = useDeferredValue(searchActivo);
@@ -224,6 +225,40 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
       })
       .map((item) => item.orden);
   }, [ordenesIndex, searchTerms]);
+
+  const selectedOrdenSet = useMemo(
+    () => new Set(selectedOrdenIds.map(Number)),
+    [selectedOrdenIds]
+  );
+
+  const selectedOrdenes = useMemo(() => {
+    if (selectedOrdenSet.size === 0) return [];
+    const source = Array.isArray(ordenes) ? ordenes : [];
+    return source.filter((item) => selectedOrdenSet.has(Number(item.id)));
+  }, [ordenes, selectedOrdenSet]);
+
+  const selectedOrdenesFirmables = useMemo(
+    () => selectedOrdenes.filter((item) => !item.firmada),
+    [selectedOrdenes]
+  );
+
+  const visibleOrdenIds = useMemo(
+    () =>
+      filteredOrdenes
+        .filter((item) => !item.firmada)
+        .map((item) => Number(item.id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    [filteredOrdenes]
+  );
+
+  const allVisibleOrdenesSelected =
+    visibleOrdenIds.length > 0 &&
+    visibleOrdenIds.every((id) => selectedOrdenSet.has(id));
+
+  const signingOrderSet = useMemo(
+    () => new Set(signingOrderIds.map(Number)),
+    [signingOrderIds]
+  );
 
   const consecutivoPorOrdenId = useMemo(() => {
     const source = Array.isArray(ordenesPorEntidadActiva) ? [...ordenesPorEntidadActiva] : [];
@@ -469,71 +504,174 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
   );
 
   const openSignatureModal = (orden) => {
-    if (!orden?.id || orden?.firmada) {
+    if (!orden?.id || orden?.firmada || !canSignOrders) {
       return;
     }
 
     setError("");
     setSuccess("");
-    setOrdenParaFirmar(orden);
+    const selectedFirmable = selectedOrdenesFirmables.length > 0 ? selectedOrdenesFirmables : [orden];
+    const uniqueTargets = Array.from(
+      new Map(
+        selectedFirmable
+          .filter((item) => item?.id && !item?.firmada)
+          .map((item) => [String(item.id), item])
+      ).values()
+    );
+    setOrdenesParaFirmar(uniqueTargets.length > 0 ? uniqueTargets : [orden]);
     setTempSignature("");
     setShowSignatureModal(true);
   };
 
   const closeSignatureModal = () => {
-    if (signingOrderId) {
+    if (signingOrderIds.length > 0) {
       return;
     }
 
     setShowSignatureModal(false);
-    setOrdenParaFirmar(null);
+    setOrdenesParaFirmar([]);
     setTempSignature("");
   };
 
   const firmarOrdenSeleccionada = async () => {
-    const ordenActual = ordenParaFirmar;
-    if (!ordenActual?.id || !tempSignature || signingOrderId) {
+    const ordenesObjetivo = Array.from(
+      new Map(
+        (Array.isArray(ordenesParaFirmar) ? ordenesParaFirmar : [])
+          .filter((item) => item?.id && !item?.firmada)
+          .map((item) => [String(item.id), item])
+      ).values()
+    );
+
+    if (ordenesObjetivo.length === 0 || !tempSignature || signingOrderIds.length > 0) {
       return;
     }
 
-    const ordenId = ordenActual.id;
-    const numeroOrden = ordenActual.numero || `#${ordenId}`;
+    const targetIds = ordenesObjetivo
+      .map((item) => Number(item.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
 
     setError("");
     setSuccess("");
-    setSigningOrderId(ordenId);
+    setSigningOrderIds(targetIds);
 
     try {
       const firmaReducida = await reducirFirma(tempSignature);
-      await httpClient.post(`/api/ordenes/${ordenId}/firmar`, {
-        firmaBase64: firmaReducida || tempSignature
-      });
+      const firmaBase64 = firmaReducida || tempSignature;
+      const resultados = [];
 
-      setOrdenes((prev) =>
-        Array.isArray(prev)
-          ? prev.map((item) =>
-              Number(item.id) === Number(ordenId)
-                ? { ...item, firmada: true, estado: "Firmada" }
-                : item
-            )
-          : prev
-      );
-      setSelectedOrden((prev) =>
-        prev && Number(prev.id) === Number(ordenId)
-          ? { ...prev, firmada: true, estado: "Firmada" }
-          : prev
-      );
+      for (const ordenActual of ordenesObjetivo) {
+        const ordenId = Number(ordenActual.id);
+        const numeroOrden = ordenActual.numero || `#${ordenId}`;
+        try {
+          await httpClient.post(`/api/ordenes/${ordenId}/firmar`, {
+            firmaBase64
+          });
+          resultados.push({
+            ok: true,
+            id: ordenId,
+            numero: numeroOrden
+          });
+        } catch (err) {
+          resultados.push({
+            ok: false,
+            id: ordenId,
+            numero: numeroOrden,
+            message: err?.response?.data?.message || err?.response?.data?.error || "No se pudo firmar la orden"
+          });
+        }
+      }
+
+      const signedIds = resultados.filter((item) => item.ok).map((item) => Number(item.id));
+      const failed = resultados.filter((item) => !item.ok);
+
+      if (signedIds.length > 0) {
+        setOrdenes((prev) =>
+          Array.isArray(prev)
+            ? prev.map((item) =>
+                signedIds.includes(Number(item.id))
+                  ? { ...item, firmada: true, estado: "Firmada" }
+                  : item
+              )
+            : prev
+        );
+        setSelectedOrden((prev) =>
+          prev && signedIds.includes(Number(prev.id))
+            ? { ...prev, firmada: true, estado: "Firmada" }
+            : prev
+        );
+        setSelectedOrdenIds((prev) =>
+          prev.filter((id) => !signedIds.includes(Number(id)))
+        );
+      }
 
       setShowSignatureModal(false);
-      setOrdenParaFirmar(null);
+      setOrdenesParaFirmar([]);
       setTempSignature("");
-      setSuccess(`Orden ${numeroOrden} firmada correctamente`);
+
+      if (failed.length === 0) {
+        if (resultados.length === 1) {
+          setSuccess(`Orden ${resultados[0].numero} firmada correctamente`);
+        } else {
+          setSuccess(`${resultados.length} órdenes firmadas correctamente`);
+        }
+      } else {
+        const resumenFallos = failed
+          .slice(0, 3)
+          .map((item) => `Orden ${item.numero}: ${item.message}`)
+          .join(" | ");
+        if (signedIds.length > 0) {
+          setSuccess(`${signedIds.length} órdenes firmadas correctamente`);
+        }
+        setError(
+          signedIds.length > 0
+            ? `Firmado parcial: ${signedIds.length}/${resultados.length}. ${resumenFallos}`
+            : `No se pudo firmar ninguna orden. ${resumenFallos}`
+        );
+      }
+
       await fetchOrdenes();
     } catch (err) {
       setError(err?.response?.data?.message || err?.response?.data?.error || "No se pudo firmar la orden");
     } finally {
-      setSigningOrderId(null);
+      setSigningOrderIds([]);
     }
+  };
+
+  const toggleOrdenSelection = (ordenId, event) => {
+    if (event?.stopPropagation) event.stopPropagation();
+    if (!canSignOrders) return;
+
+    const normalizedId = Number(ordenId);
+    if (!Number.isInteger(normalizedId) || normalizedId <= 0) return;
+
+    setSelectedOrdenIds((prev) => {
+      const exists = prev.some((id) => Number(id) === normalizedId);
+      if (exists) {
+        return prev.filter((id) => Number(id) !== normalizedId);
+      }
+      return [...prev, normalizedId];
+    });
+  };
+
+  const toggleSelectAllVisibleOrdenes = () => {
+    if (!canSignOrders) return;
+
+    const visibleSelectableIds = filteredOrdenes
+      .filter((item) => !item.firmada)
+      .map((item) => Number(item.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+    setSelectedOrdenIds((prev) => {
+      const prevSet = new Set(prev.map(Number));
+      const shouldSelectAll = visibleSelectableIds.some((id) => !prevSet.has(id));
+
+      if (shouldSelectAll) {
+        visibleSelectableIds.forEach((id) => prevSet.add(id));
+        return Array.from(prevSet);
+      }
+
+      return prev.filter((id) => !visibleSelectableIds.includes(Number(id)));
+    });
   };
 
   const stats = useMemo(() => {
@@ -645,6 +783,18 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
       {error && <div className="alert alert-error">{error}</div>}
       {success && <div className="alert alert-success">{success}</div>}
 
+      {canSignOrders && selectedOrdenesFirmables.length > 0 && (
+        <div className="ordenes-bulk-actions">
+          <button
+            type="button"
+            className="btn-action ordenes-bulk-sign-button"
+            onClick={() => openSignatureModal(selectedOrdenesFirmables[0])}
+            disabled={signingOrderIds.length > 0}
+          >
+            Firmar seleccionadas ({selectedOrdenesFirmables.length})
+          </button>
+        </div>
+      )}
 
       <div className="ordenes-filters">
         <input
@@ -688,6 +838,17 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
           <table className="ordenes-table">
           <thead>
             <tr>
+              {canSignOrders && (
+                <th className="ordenes-select-header">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleOrdenesSelected}
+                    onChange={toggleSelectAllVisibleOrdenes}
+                    disabled={visibleOrdenIds.length === 0}
+                    aria-label="Seleccionar todas las órdenes visibles"
+                  />
+                </th>
+              )}
               <th>Consecutivo</th>
               <th>ID</th>
               <th>Numero</th>
@@ -703,7 +864,18 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
           </thead>
           <tbody>
             {filteredOrdenes.map((orden) => (
-              <tr key={orden.id}>
+              <tr key={orden.id} className={selectedOrdenSet.has(Number(orden.id)) ? "ordenes-row-selected" : ""}>
+                {canSignOrders && (
+                  <td className="ordenes-select-cell">
+                    <input
+                      type="checkbox"
+                      checked={selectedOrdenSet.has(Number(orden.id))}
+                      onChange={(event) => toggleOrdenSelection(orden.id, event)}
+                      disabled={orden.firmada || signingOrderSet.has(Number(orden.id))}
+                      aria-label={`Seleccionar orden ${orden.numero || `#${orden.id}`}`}
+                    />
+                  </td>
+                )}
                 <td>{obtenerConsecutivoOrden(orden.id)}</td>
                 <td>{orden.id}</td>
                 <td>{orden.numero || "-"}</td>
@@ -725,6 +897,7 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
                   {canSignOrders && !orden.firmada && (
                     <button
                       className="btn-action"
+                      disabled={signingOrderIds.length > 0}
                       onClick={() => openSignatureModal(orden)}
                       title="Firmar orden"
                     >
@@ -808,7 +981,7 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
                 Imprimir
               </button>
               {canSignOrders && !selectedOrden.firmada && (
-                <button className="btn-action" onClick={() => openSignatureModal(selectedOrden)}>
+                <button className="btn-action" onClick={() => openSignatureModal(selectedOrden)} disabled={signingOrderIds.length > 0}>
                   Firmar
                 </button>
               )}
@@ -820,7 +993,7 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
         </dialog>
       )}
 
-      {showSignatureModal && ordenParaFirmar && (
+      {showSignatureModal && ordenesParaFirmar.length > 0 && (
         <div
           className="ordenes-sign-modal-overlay"
           onClick={(event) => {
@@ -840,26 +1013,43 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
           <div className="ordenes-sign-modal-card" role="dialog" aria-modal="true" aria-labelledby="orden-sign-title">
             <div className="ordenes-sign-modal-header">
               <h2 id="orden-sign-title">
-                Firmar orden {ordenParaFirmar.numero || `#${ordenParaFirmar.id}`}
+                {ordenesParaFirmar.length > 1
+                  ? `Firmar ${ordenesParaFirmar.length} órdenes seleccionadas`
+                  : `Firmar orden ${ordenesParaFirmar[0].numero || `#${ordenesParaFirmar[0].id}`}`}
               </h2>
               <button
                 className="ordenes-sign-close-btn"
                 onClick={closeSignatureModal}
                 type="button"
                 aria-label="Cerrar modal"
-                disabled={signingOrderId === ordenParaFirmar.id}
+                disabled={signingOrderIds.length > 0}
               >
                 ×
               </button>
             </div>
             <div className="ordenes-sign-modal-body">
               <p className="ordenes-sign-caption">
-                Dibuja tu firma para registrar la aprobación de esta orden.
+                Dibuja tu firma para registrar la aprobación de{" "}
+                {ordenesParaFirmar.length > 1 ? "las órdenes seleccionadas" : "esta orden"}.
               </p>
+              {ordenesParaFirmar.length > 1 && (
+                <div className="ordenes-sign-summary">
+                  {ordenesParaFirmar.slice(0, 4).map((orden) => (
+                    <span key={`orden-sign-summary-${orden.id}`} className="ordenes-sign-chip">
+                      {orden.numero || `#${orden.id}`}
+                    </span>
+                  ))}
+                  {ordenesParaFirmar.length > 4 && (
+                    <span className="ordenes-sign-chip">
+                      +{ordenesParaFirmar.length - 4} más
+                    </span>
+                  )}
+                </div>
+              )}
               <FirmaDigital
                 value={tempSignature}
                 onChange={setTempSignature}
-                disabled={signingOrderId === ordenParaFirmar.id}
+                disabled={signingOrderIds.length > 0}
                 label="Dibuja tu firma"
               />
             </div>
@@ -868,15 +1058,15 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
                 className="ordenes-sign-confirm-btn"
                 onClick={firmarOrdenSeleccionada}
                 type="button"
-                disabled={!tempSignature || signingOrderId === ordenParaFirmar.id}
+                disabled={!tempSignature || signingOrderIds.length > 0}
               >
-                {signingOrderId === ordenParaFirmar.id ? "Firmando..." : "Confirmar firma"}
+                {signingOrderIds.length > 0 ? "Firmando..." : "Confirmar firma"}
               </button>
               <button
                 className="ordenes-sign-cancel-btn"
                 onClick={closeSignatureModal}
                 type="button"
-                disabled={signingOrderId === ordenParaFirmar.id}
+                disabled={signingOrderIds.length > 0}
               >
                 Cancelar
               </button>

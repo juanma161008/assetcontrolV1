@@ -279,12 +279,16 @@ const EXPORT_SCOPE_OPTIONS = [
 
 const downloadBlobFile = (blob, filename) => {
   const blobUrl = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = blobUrl;
-  link.download = filename;
+
+  const link = Object.assign(document.createElement("a"), {
+    href: blobUrl,
+    download: filename,
+  });
+
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
+
+  link.remove();
   URL.revokeObjectURL(blobUrl);
 };
 
@@ -306,17 +310,27 @@ const imageToDataUrl = async (src) => {
 
 const parseExcelImage = (dataUrl) => {
   if (!dataUrl) return null;
-  const match = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(String(dataUrl));
+
+  const match = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(
+    String(dataUrl)
+  );
+
   if (!match) return null;
+
   const mime = match[1].toLowerCase();
-  const extension = mime.includes("png")
-    ? "png"
-    : mime.includes("jpeg") || mime.includes("jpg")
-      ? "jpeg"
-      : mime.includes("gif")
-        ? "gif"
-        : "png";
-  return { base64: match[2], extension };
+
+  let extension = "png";
+
+  if (mime.includes("jpeg") || mime.includes("jpg")) {
+    extension = "jpeg";
+  } else if (mime.includes("gif")) {
+    extension = "gif";
+  }
+
+  return {
+    base64: match[2],
+    extension,
+  };
 };
 
 const EXCEL_COLUMN_WIDTHS = {

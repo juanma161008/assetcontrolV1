@@ -4,7 +4,7 @@ const normalizeText = (value) =>
   typeof value === "string" ? value.trim() : value;
 const normalizeTextForLookup = (value) =>
   typeof value === "string" ? value.trim().toUpperCase() : value;
-const DEFAULT_ENTITY_COLUMNS = ["nombre", "tipo", "direccion"];
+const DEFAULT_ENTITY_COLUMNS = ["nombre", "nit", "tipo", "direccion"];
 const AREA_TIPO_PRIMARIA = "PRIMARIA";
 const AREA_TIPO_SECUNDARIA = "SECUNDARIA";
 const EMPTY_AREAS = { areas_primarias: [], areas_secundarias: [] };
@@ -47,6 +47,7 @@ export default class EntidadPgRepository {
   normalizePayload(data = {}) {
     return {
       nombre: normalizeText(data.nombre),
+      nit: normalizeText(data.nit),
       tipo: normalizeText(data.tipo),
       direccion: normalizeText(data.direccion)
     };

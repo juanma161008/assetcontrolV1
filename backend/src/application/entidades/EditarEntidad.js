@@ -32,7 +32,7 @@ export default class EditarEntidad {
   }
 
   construirPayload(data) {
-    const camposPermitidos = ["nombre", "tipo", "direccion"];
+    const camposPermitidos = ["nombre", "nit", "tipo", "direccion"];
 
     return camposPermitidos.reduce((payload, campo) => {
       if (data[campo] !== undefined) {
@@ -50,6 +50,7 @@ export default class EditarEntidad {
 
     this.validarCampoObligatorio(payload.nombre, "El nombre es obligatorio");
     this.validarCampoObligatorio(payload.tipo, "El tipo es obligatorio");
+    this.validarCampoObligatorio(payload.nit, "El NIT es obligatorio");
   }
 
   validarCampoObligatorio(valor, mensaje) {
@@ -112,6 +113,7 @@ export default class EditarEntidad {
   mapearDatos(entidad) {
     return {
       nombre: entidad.nombre,
+      nit: entidad.nit,
       tipo: entidad.tipo,
       direccion: entidad.direccion
     };

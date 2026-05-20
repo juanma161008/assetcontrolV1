@@ -25,6 +25,7 @@ export default class LoginUseCase {
       await this.obtenerEntidadesAsignadas(user.id);
 
     return this.construirPayloadUsuario({
+
       user,
       permisos,
       debeCambiarPassword,
@@ -197,9 +198,17 @@ export default class LoginUseCase {
       permisos
     };
 
-    if (Array.isArray(entidadesAsignadas)) {
-      userPayload.entidades_asignadas = entidadesAsignadas;
+    // Mantener compatibilidad con tests existentes:
+    // - si el repo existe, siempre incluir entidades_asignadas (aunque sea [])
+    if (typeof this.usuarioRepo?.getEntidadesByUsuario === "function") {
+      userPayload.entidades_asignadas = Array.isArray(entidadesAsignadas)
+        ? entidadesAsignadas
+        : [];
     }
+
+
+
+
 
     if (debeCambiarPassword) {
       userPayload.debe_cambiar_password = true;

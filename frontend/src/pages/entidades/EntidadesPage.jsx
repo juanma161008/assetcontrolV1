@@ -1,4 +1,9 @@
 ﻿import React, { useEffect, useState } from "react";
+
+// Componente de UI para gestionar Entidades y visualizar cobertura de accesos.
+// Incluye: listado (desktop/mobile), formulario (crear/editar) y dashboard de métricas/usuarios autorizados.
+
+
 import httpClient from "../../services/httpClient";
 import { fetchCurrentUser, getCurrentUser, isAuthenticated } from "../../services/authService";
 import { getRoleLabel, hasPermission } from "../../utils/permissions";
@@ -559,6 +564,7 @@ const styles = {
 
 const INITIAL_FORM = {
   nombre: "",
+  nit: "",
   tipo: "ENTIDAD",
   direccion: "",
   areas_primarias: [],
@@ -870,11 +876,16 @@ export default function EntidadesPage() {
       setError("El tipo es requerido");
       return false;
     }
+    if (!form.nit.trim()) {
+      setError("El NIT es requerido");
+      return false;
+    }
     return true;
   };
 
   const buildPayload = () => ({
     nombre: form.nombre.trim(),
+    nit: form.nit.trim(),
     tipo: form.tipo.trim(),
     direccion: form.direccion.trim() || null,
     areas_primarias: sanitizeAreaList(form.areas_primarias),
@@ -923,6 +934,7 @@ export default function EntidadesPage() {
     setEditingId(entidad.id);
     setForm({
       nombre: String(entidad.nombre || ""),
+      nit: String(entidad.nit || ""),
       tipo: toProperCase(String(entidad.tipo || "")),
       direccion: toProperCase(String(entidad.direccion || "")),
       areas_primarias: sanitizeAreaList(entidad.areas_primarias),
@@ -1157,6 +1169,10 @@ export default function EntidadesPage() {
                   Dirección: {String(entidadSeleccionada.direccion || "Sin dirección registrada")}
                 </p>
                 <p style={styles.detailMeta}>
+                  NIT: {String(entidadSeleccionada.nit || "Sin NIT registrado")}
+                </p>
+
+                <p style={styles.detailMeta}>
                   Áreas: {sanitizeAreaList(entidadSeleccionada.areas_primarias).length} primarias /
                   {" "}
                   {sanitizeAreaList(entidadSeleccionada.areas_secundarias).length} secundarias
@@ -1225,6 +1241,20 @@ export default function EntidadesPage() {
                 value={form.nombre}
                 onChange={handleChange}
                 placeholder="Ej: Niquía, Autopista, Centro"
+                style={styles.input}
+                disabled={saving || !isAdmin}
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label htmlFor="entidad-nit" style={styles.label}>NIT *</label>
+              <input
+                id="entidad-nit"
+                type="text"
+                name="nit"
+                value={form.nit}
+                onChange={handleChange}
+                placeholder="Ej: 900123456"
                 style={styles.input}
                 disabled={saving || !isAdmin}
               />
@@ -1452,6 +1482,11 @@ export default function EntidadesPage() {
                   <span>{entidad.direccion || "-"}</span>
                 </div>
                 <div style={styles.mobileField}>
+                  <span style={styles.mobileLabel}>NIT</span>
+                  <span>{entidad.nit || "-"}</span>
+                </div>
+
+                <div style={styles.mobileField}>
                   <span style={styles.mobileLabel}>Áreas P.</span>
                   <span>{formatAreaList(entidad.areas_primarias) || "-"}</span>
                 </div>
@@ -1508,6 +1543,7 @@ export default function EntidadesPage() {
                 <th style={styles.th}>Nombre</th>
                 <th style={styles.th}>Tipo</th>
                 <th style={styles.th}>Dirección</th>
+                <th style={styles.th}>NIT</th>
                 <th style={styles.th}>Áreas Primarias</th>
                 <th style={styles.th}>Áreas Secundarias</th>
                 {isAdmin && <th style={styles.th}>Acciones</th>}
@@ -1528,6 +1564,7 @@ export default function EntidadesPage() {
                   <td style={styles.td}><strong>{entidad.nombre}</strong></td>
                   <td style={styles.td}>{entidad.tipo}</td>
                   <td style={styles.td}>{entidad.direccion || "-"}</td>
+                  <td style={styles.td}>{entidad.nit || "-"}</td>
                   <td style={styles.td}>{formatAreaList(entidad.areas_primarias) || "-"}</td>
                   <td style={styles.td}>{formatAreaList(entidad.areas_secundarias) || "-"}</td>
                   {isAdmin && (

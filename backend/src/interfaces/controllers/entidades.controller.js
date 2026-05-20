@@ -14,6 +14,7 @@ const repo = new EntidadPgRepository();
 const logUseCase = new RegistrarLog(new LogPgRepository());
 const extractEntityPayload = (body = {}) => ({
   nombre: body.nombre,
+  nit: body.nit,
   tipo: body.tipo,
   direccion: body.direccion
 });

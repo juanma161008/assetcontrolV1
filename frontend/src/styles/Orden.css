@@ -120,6 +120,18 @@
   border-bottom: 3px solid var(--brand-900);
 }
 
+.factura-bulk-banner {
+  margin: -10px 0 18px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #bfd3f8;
+  background: linear-gradient(135deg, #eef5ff, #f8fbff);
+  color: var(--brand-900);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
 /* =============================
    SECCIONES GENERALES DEL DOCUMENTO
 ============================= */

@@ -117,6 +117,18 @@
   box-shadow: none;
 }
 
+.ordenes-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ordenes-bulk-sign-button {
+  min-height: 42px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
 /* ===========================================
    TABLA PRINCIPAL DE ORDENES
    =========================================== */
@@ -129,7 +141,7 @@
 .ordenes-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 980px;
+  min-width: 1040px;
 }
 
 .ordenes-table thead {
@@ -153,8 +165,25 @@
   color: #1f2937;
 }
 
+.ordenes-select-header,
+.ordenes-select-cell {
+  width: 46px;
+  text-align: center;
+}
+
+.ordenes-select-header input[type="checkbox"],
+.ordenes-select-cell input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand-700);
+}
+
 .ordenes-table tbody tr:hover {
   background: #f8fbff;
+}
+
+.ordenes-row-selected {
+  background: #eef6ff;
 }
 
 .ordenes-actions-cell {
@@ -310,6 +339,25 @@
   margin: 0 0 12px;
   color: #334155;
   font-size: 13px;
+}
+
+.ordenes-sign-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ordenes-sign-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 5px 10px;
+  border: 1px solid #c9d8f6;
+  background: #e7efff;
+  color: var(--brand-900);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .ordenes-sign-modal-footer {

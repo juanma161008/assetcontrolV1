@@ -10,7 +10,7 @@ const escapeCsvValue = (value) => {
   const raw = String(value ?? "");
   const mustQuote = raw.includes(",") || raw.includes("\"") || raw.includes("\n");
   if (!mustQuote) return raw;
-  return `"${raw.replace(/"/g, '""')}"`;
+  return `"${raw.replaceAll('/"/', '""')}"`;
 };
 
 const styles = {

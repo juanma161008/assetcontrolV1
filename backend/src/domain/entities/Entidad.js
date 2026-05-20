@@ -1,7 +1,8 @@
 export default class Entidad {
-  constructor({ id, nombre, tipo, direccion, telefono }) {
+  constructor({ id, nombre, nit, tipo, direccion, telefono }) {
     this.id = id;
     this.nombre = nombre;
+    this.nit = nit;
     this.tipo = tipo;
     this.direccion = direccion;
     this.telefono = telefono;
@@ -11,9 +12,11 @@ export default class Entidad {
     return {
       id: this.id,
       nombre: this.nombre,
+      nit: this.nit,
       tipo: this.tipo,
       direccion: this.direccion,
       telefono: this.telefono
     };
   }
 }
+

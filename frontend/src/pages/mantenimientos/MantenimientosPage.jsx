@@ -90,6 +90,36 @@ const downloadBlobFile = (blob, filename) => {
   document.body.removeChild(link);
   URL.revokeObjectURL(blobUrl);
 };
+const reducirFirma = (dataURL) =>
+  new Promise((resolve, reject) => {
+    if (!dataURL) {
+      resolve("");
+      return;
+    }
+
+    if (String(dataURL).includes("image/jpeg")) {
+      resolve(dataURL);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = 220;
+        canvas.height = 90;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.72));
+      } catch (error) {
+        reject(error);
+      }
+    };
+    img.onerror = reject;
+    img.src = dataURL;
+  });
 const imageToDataUrl = async (src) => {
   if (!src) return "";
   if (String(src).startsWith("data:image")) return src;
@@ -550,9 +580,10 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   const [createModalReady, setCreateModalReady] = useState(false);
   const [modalMantenimiento, setModalMantenimiento] = useState(null);
   const [showFacturaModal, setShowFacturaModal] = useState(false);
+  const [bulkFacturaTargets, setBulkFacturaTargets] = useState([]);
   const [isOrderLoading, setIsOrderLoading] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [isMobileLayout, setIsMobileLayout] = useState(() => isMobileViewport());
+  const [, setIsMobileLayout] = useState(() => isMobileViewport());
 
   const [form, setForm] = useState(() => buildDefaultMaintenanceForm(defaultTecnico, entidadActivaId));
   const [doubleFormDrafts, setDoubleFormDrafts] = useState(null);
@@ -567,6 +598,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   const resetDetailModalState = useCallback(() => {
     setModalMantenimiento(null);
     setShowFacturaModal(false);
+    setBulkFacturaTargets([]);
     setError("");
     setSuccess("");
     setIsOrderLoading(false);
@@ -781,10 +813,10 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     }, {});
   }, [mantenimientosFiltradosPorEntidad]);
 
-  const obtenerConsecutivoMantenimiento = (id) => {
+  const obtenerConsecutivoMantenimiento = useCallback((id) => {
     const consecutivo = consecutivoPorMantenimientoId[String(id)];
     return Number.isInteger(consecutivo) ? consecutivo : null;
-  };
+  }, [consecutivoPorMantenimientoId]);
 
   const numeroActivo = useCallback((mantenimiento) => {
     if (mantenimiento.activo_id != null) {
@@ -1838,12 +1870,12 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     }
   };
 
-  const formatFecha = (f) => {
+  const formatFecha = useCallback((f) => {
     if (!f) return "-";
     const d = new Date(f);
     if (Number.isNaN(d.getTime())) return f;
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-  };
+  }, []);
 
   const abrirModal = useCallback((m) => {
     if (!m) return;
@@ -1974,9 +2006,16 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     `OT-MANT-${mantenimientoConsecutivo}-${String(Date.now()).slice(-5)}`
   );
 
-  const obtenerNumeroOrdenFactura = async (numeroBase, mantenimientoConsecutivo) => {
-    if (numeroBase) {
-      return `OT-${numeroBase}`.replaceAll(/\s+/g, "-");
+  const obtenerNumeroOrdenFactura = async (numeroBase, mantenimientoConsecutivo, sufijo = "") => {
+    const base = String(numeroBase || "").trim().replace(/^OT-?/i, "");
+    const cleanSuffix = String(sufijo || "").trim().replace(/\s+/g, "-");
+
+    if (base && cleanSuffix) {
+      return `OT-${base}-${cleanSuffix}`.replaceAll(/\s+/g, "-");
+    }
+
+    if (base) {
+      return `OT-${base}`.replaceAll(/\s+/g, "-");
     }
 
     let numero = buildFallbackOrdenNumero(mantenimientoConsecutivo);
@@ -1990,7 +2029,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       const siguiente = obtenerSiguienteConsecutivo(usados);
       numero = `OT-${String(siguiente).padStart(2, "0")}`;
     } catch {
-      // Si falla consulta de ordenes, mantiene fallback OT-MANT-...
+      // Si falla la consulta de ordenes, se conserva el fallback.
     }
 
     return numero;
@@ -2015,12 +2054,37 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     }
   };
 
-  const guardarOrdenPdfLocal = (orden, numeroOrden, facturaPayload, mantenimientoConsecutivo) => {
-    if (!orden.id) return;
+  const prepararFacturaPayload = async (facturaPayload = {}) => {
+    const payload = {
+      ...facturaPayload,
+      numeroFactura: String(facturaPayload.numeroFactura || "").trim(),
+      fecha: String(facturaPayload.fecha || "").trim()
+    };
 
-    const activo = obtenerActivoMantenimiento(modalMantenimiento) || {};
+    if (payload.usuarioFirma) {
+      payload.usuarioFirma = await reducirFirma(payload.usuarioFirma);
+    }
+
+    if (payload.autorizaFirma) {
+      payload.autorizaFirma = await reducirFirma(payload.autorizaFirma);
+    }
+
+    return payload;
+  };
+
+  const persistirFacturaFirmada = (mantenimientoBase, facturaPayload) => {
+    if (!mantenimientoBase?.id) return;
+
+    const storageKey = `factura_mantenimiento_${String(mantenimientoBase.id || "sin-id")}`;
+    localStorage.setItem(storageKey, JSON.stringify(facturaPayload));
+  };
+
+  const guardarOrdenPdfLocal = (orden, numeroOrden, facturaPayload, mantenimientoConsecutivo, mantenimientoBase = modalMantenimiento) => {
+    if (!orden.id || !mantenimientoBase?.id) return;
+
+    const activo = obtenerActivoMantenimiento(mantenimientoBase) || {};
     const mantenimientoDocumento = {
-      ...modalMantenimiento,
+      ...mantenimientoBase,
       id: mantenimientoConsecutivo
     };
 
@@ -2044,62 +2108,184 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     localStorage.setItem(`orden_pdf_${orden.id}`, JSON.stringify(payloadOrdenPdf));
   };
 
-  const notificarResultadoOrden = (orden, firmaBase64, firmaAplicada, warningFirma) => {
-    const identificadorOrden = orden.numero || `#${orden.id}`;
-
-    if (firmaBase64 && !firmaAplicada) {
-      setError(`Orden creada: ${identificadorOrden}, pero sin firma. ${warningFirma}`);
-      return;
+  const generarOrdenParaMantenimiento = async (mantenimientoObjetivo, facturaPayload = {}, numeroSufijo = "") => {
+    if (!mantenimientoObjetivo?.id) {
+      throw new Error("No hay mantenimiento objetivo");
     }
 
-    const sufijo = firmaAplicada ? " (FIRMADA)" : "";
-    setSuccess(`Orden creada: ${identificadorOrden}${sufijo}`);
+    const mantenimientoConsecutivo =
+      obtenerConsecutivoMantenimiento(mantenimientoObjetivo.id) || mantenimientoObjetivo.id;
+    const firmaBase64 = facturaPayload.autorizaFirma || facturaPayload.usuarioFirma || "";
+    const numeroBase = String(facturaPayload.numeroFactura || "").trim();
+    const numero = await obtenerNumeroOrdenFactura(numeroBase, mantenimientoConsecutivo, numeroSufijo);
+    const response = await httpClient.post("/api/ordenes", {
+      numero,
+      fecha: new Date().toISOString().slice(0, 10),
+      estado: "Generada",
+      mantenimientos: [mantenimientoObjetivo.id]
+    });
+
+    const orden = response.data.data || response.data;
+    const { firmaAplicada, warningFirma } = await firmarOrdenSiAplica(orden.id, firmaBase64);
+    const facturaDocumento = {
+      ...facturaPayload,
+      numeroFactura: numero
+    };
+
+    guardarOrdenPdfLocal(orden, numero, facturaDocumento, mantenimientoConsecutivo, mantenimientoObjetivo);
+    persistirFacturaFirmada(mantenimientoObjetivo, facturaDocumento);
+
+    return {
+      orden,
+      numero,
+      mantenimientoObjetivo,
+      firmaAplicada,
+      warningFirma,
+      facturaDocumento
+    };
   };
 
-  const generarOrdenConFactura = async (facturaPayload = {}) => {
-    if (!modalMantenimiento.id || isOrderLoading) return;
+  const generarOrdenesConFactura = async (facturaPayload = {}, mantenimientosObjetivo = []) => {
+    if (isOrderLoading) return null;
+
+    const targets = Array.from(
+      new Map(
+        (Array.isArray(mantenimientosObjetivo) ? mantenimientosObjetivo : [])
+          .filter((item) => item?.id)
+          .map((item) => [String(item.id), item])
+      ).values()
+    );
+
+    if (!targets.length) return null;
+
     setError("");
     setSuccess("");
     setIsOrderLoading(true);
 
     try {
-      const mantenimientoConsecutivo =
-        obtenerConsecutivoMantenimiento(modalMantenimiento.id) || modalMantenimiento.id;
-      const firmaBase64 = facturaPayload.autorizaFirma || facturaPayload.usuarioFirma || "";
-      const numeroBase = String(facturaPayload.numeroFactura || "").trim();
-      const numero = await obtenerNumeroOrdenFactura(numeroBase, mantenimientoConsecutivo);
-      const response = await httpClient.post("/api/ordenes", {
-        numero,
-        fecha: new Date().toISOString().slice(0, 10),
-        estado: "Generada",
-        mantenimientos: [modalMantenimiento.id]
-      });
+      const payload = await prepararFacturaPayload(facturaPayload);
+      const results = [];
+      const successfulIds = [];
 
-      const orden = response.data.data || response.data;
-      const { firmaAplicada, warningFirma } = await firmarOrdenSiAplica(orden.id, firmaBase64);
+      for (const mantenimientoObjetivo of targets) {
+        const mantenimientoConsecutivo =
+          obtenerConsecutivoMantenimiento(mantenimientoObjetivo.id) || mantenimientoObjetivo.id;
+        const numeroSufijo = targets.length > 1
+          ? String(mantenimientoConsecutivo).trim().replace(/\s+/g, "-")
+          : "";
 
-      guardarOrdenPdfLocal(orden, numero, facturaPayload, mantenimientoConsecutivo);
-      notificarResultadoOrden(orden, firmaBase64, firmaAplicada, warningFirma);
+        try {
+          const result = await generarOrdenParaMantenimiento(
+            mantenimientoObjetivo,
+            payload,
+            numeroSufijo
+          );
+          results.push({ ok: true, ...result });
+          successfulIds.push(Number(mantenimientoObjetivo.id));
+        } catch (err) {
+          results.push({
+            ok: false,
+            mantenimiento: mantenimientoObjetivo,
+            message:
+              err?.response?.data?.message ||
+              err?.response?.data?.error ||
+              err?.message ||
+              "Error al generar la orden"
+          });
+        }
+      }
+
+      if (successfulIds.length > 0) {
+        setSelectedMantenimientosIds((prev) =>
+          prev.filter((id) => !successfulIds.includes(Number(id)))
+        );
+      }
+
+      const failed = results.filter((item) => !item.ok);
+      const created = results.filter((item) => item.ok);
+      const unsigned = created.filter((item) => !item.firmaAplicada);
+
       setShowFacturaModal(false);
-      setTimeout(() => {
-        cerrarModal();
-        navigate("/ordenes");
-      }, 900);
+      setBulkFacturaTargets([]);
+
+      const resumenFallos = failed
+        .slice(0, 3)
+        .map((item, index) => {
+          const mantenimiento = item.mantenimiento;
+          const consecutivo =
+            mantenimiento ? obtenerConsecutivoMantenimiento(mantenimiento.id) || mantenimiento.id : index + 1;
+          return `MT-${String(consecutivo).padStart(4, "0")}: ${item.message}`;
+        })
+        .join(" | ");
+
+      const resumenSinFirma = unsigned
+        .slice(0, 3)
+        .map((item, index) => {
+          const mantenimiento = item.mantenimientoObjetivo;
+          const consecutivo = mantenimiento
+            ? obtenerConsecutivoMantenimiento(mantenimiento.id) || mantenimiento.id
+            : index + 1;
+          return `MT-${String(consecutivo).padStart(4, "0")}: ${item.warningFirma || "Firma no aplicada"}`;
+        })
+        .join(" | ");
+
+      if (created.length > 0) {
+        if (created.length === 1) {
+          const ordenCreada = created[0].orden;
+          const numeroCreado = ordenCreada.numero || created[0].numero;
+          setSuccess(`Orden creada: ${numeroCreado}${created[0].firmaAplicada ? " (FIRMADA)" : ""}`);
+        } else {
+          setSuccess(`${created.length} órdenes creadas correctamente`);
+        }
+
+        const mensajesError = [];
+        if (unsigned.length > 0) {
+          mensajesError.push(`Algunas órdenes se crearon sin firma: ${resumenSinFirma}`);
+        }
+        if (failed.length > 0) {
+          mensajesError.push(`Generación parcial: ${created.length}/${results.length}. ${resumenFallos}`);
+        }
+        if (mensajesError.length > 0) {
+          setError(mensajesError.join(" | "));
+        }
+
+        setTimeout(() => {
+          cerrarModal();
+          navigate("/ordenes");
+        }, 900);
+      } else {
+        setError(`No se pudo generar ninguna orden. ${resumenFallos}`);
+      }
+
+      return results;
     } catch (err) {
       if (err?.response?.status === 403) {
-        setError("No tienes permiso para generar o firmar ?rdenes.");
-        return;
+        setError("No tienes permiso para generar o firmar órdenes.");
+        return null;
       }
       setError(err?.response?.data?.message || err?.response?.data?.error || "Error al generar la orden");
+      return null;
     } finally {
       setIsOrderLoading(false);
     }
   };
 
-
   const abrirFactura = () => {
+    const selectedTargets = selectedMantenimientos.length > 0 ? selectedMantenimientos : [];
+    const targetList = selectedTargets.length > 0
+      ? selectedTargets
+      : (modalMantenimiento?.id ? [modalMantenimiento] : []);
+
+    if (!targetList.length) {
+      setError("Selecciona al menos un mantenimiento para generar la factura.");
+      return;
+    }
+
     setError("");
     setSuccess("");
+    setBulkFacturaTargets(targetList);
+    setModalMantenimiento(targetList[0]);
+    setShowModal(true);
     setShowFacturaModal(true);
   };
 
@@ -2188,6 +2374,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
 
   const cerrarFactura = () => {
     setShowFacturaModal(false);
+    setBulkFacturaTargets([]);
   };
 
   const buildMantenimientoSearchText = useCallback((mantenimiento) => {
@@ -2369,6 +2556,28 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     const source = Array.isArray(mantenimientosFiltradosPorEntidad) ? mantenimientosFiltradosPorEntidad : [];
     return source.filter((item) => selectedMantenimientosSet.has(Number(item.id)));
   }, [mantenimientosFiltradosPorEntidad, selectedMantenimientosSet]);
+
+  const facturaTargets = useMemo(() => {
+    const normalizedTargets = Array.isArray(bulkFacturaTargets) ? bulkFacturaTargets : [];
+    if (normalizedTargets.length > 0) {
+      return normalizedTargets;
+    }
+    if (modalMantenimiento?.id) {
+      return [modalMantenimiento];
+    }
+    return [];
+  }, [bulkFacturaTargets, modalMantenimiento]);
+
+  const facturaTargetsSummary = useMemo(() => {
+    if (facturaTargets.length <= 1) return "";
+
+    const preview = facturaTargets.slice(0, 3).map((item) => {
+      const consecutivo = obtenerConsecutivoMantenimiento(item.id) || item.id;
+      return `MT-${String(consecutivo).padStart(4, "0")}`;
+    });
+    const extra = facturaTargets.length - preview.length;
+    return `${preview.join(", ")}${extra > 0 ? ` y ${extra} más` : ""}`;
+  }, [facturaTargets, obtenerConsecutivoMantenimiento]);
 
   const exportScopeConfig = useMemo(() => {
     const option =
@@ -3155,6 +3364,13 @@ export default function MantenimientosPage({ selectedEntidadId }) {
               {isBulkDeleting ? "Eliminando..." : `Eliminar seleccionados (${selectedMantenimientosIds.length})`}
             </button>
           )}
+          {selectedMantenimientos.length > 0 && (
+            <button type="button" className="btn-action" onClick={abrirFactura} disabled={isOrderLoading}>
+              {isOrderLoading
+                ? "Generando..."
+                : `Factura seleccionados (${selectedMantenimientos.length})`}
+            </button>
+          )}
           <button type="button" className="btn-action" onClick={() => navigate("/cronograma")}>
             Ver cronograma
           </button>
@@ -3779,11 +3995,14 @@ export default function MantenimientosPage({ selectedEntidadId }) {
           >
           {showFacturaModal ? (
             <FacturaMantenimiento
-              activo={obtenerActivoMantenimiento(modalMantenimiento) || {}}
-              mantenimiento={modalMantenimiento}
+              activo={obtenerActivoMantenimiento(facturaTargets[0] || modalMantenimiento) || {}}
+              mantenimiento={facturaTargets[0] || modalMantenimiento || {}}
               isAdmin={isAdmin}
-              mantenimientoConsecutivo={obtenerConsecutivoMantenimiento(modalMantenimiento.id)}
+              mantenimientoConsecutivo={obtenerConsecutivoMantenimiento((facturaTargets[0] || modalMantenimiento || {}).id)}
               onClose={cerrarFactura}
+              isProcessing={isOrderLoading}
+              bulkSelectionCount={facturaTargets.length}
+              bulkSelectionSummary={facturaTargetsSummary}
               onOrdenFirmada={async (facturaPayload) => {
                 if (!facturaPayload.usuarioFirma || !facturaPayload.autorizaFirma) {
                   setError("Se requieren las firmas del usuario habitual/area y de quien autoriza.");
@@ -3795,7 +4014,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                   setError("Quien autoriza debe ser una persona diferente al usuario habitual.");
                   return;
                 }
-                await generarOrdenConFactura(facturaPayload);
+                await generarOrdenesConFactura(facturaPayload, facturaTargets);
               }}
             />
           ) : (
@@ -4009,8 +4228,18 @@ export default function MantenimientosPage({ selectedEntidadId }) {
               </div>
 
               <div className="modal-actions">
-                <button type="button" className="btn-factura" onClick={abrirFactura} disabled={isOrderLoading}>
-                  Factura / Pdf / Orden
+                <button
+                  type="button"
+                  className="btn-factura"
+                  onClick={abrirFactura}
+                  disabled={isOrderLoading}
+                  title={selectedMantenimientos.length > 0
+                    ? `Aplicar factura a ${selectedMantenimientos.length} mantenimientos seleccionados`
+                    : "Generar factura, PDF u orden"}
+                >
+                  {selectedMantenimientos.length > 1
+                    ? `Factura / Pdf / Orden (${selectedMantenimientos.length})`
+                    : "Factura / Pdf / Orden"}
                 </button>
                 <button
                   type="button"

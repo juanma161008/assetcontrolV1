@@ -174,7 +174,10 @@ export default function FacturaMantenimiento({
   onClose,
   onOrdenFirmada,
   isAdmin,
-  mantenimientoConsecutivo
+  mantenimientoConsecutivo,
+  isProcessing,
+  bulkSelectionCount,
+  bulkSelectionSummary
 }) {
   const maintenanceKey = useMemo(
     () => String(mantenimiento.id || "sin-id"),
@@ -206,6 +209,7 @@ export default function FacturaMantenimiento({
   const [pendingSignatureType, setPendingSignatureType] = useState("");
   const [signatureType, setSignatureType] = useState("");
   const [tempSignature, setTempSignature] = useState("");
+  const inputsDisabled = bloqueada || isProcessing;
 
   // Recupera un borrador guardado o crea un nuevo consecutivo cuando no existe información previa.
   useEffect(() => {
@@ -276,14 +280,14 @@ export default function FacturaMantenimiento({
   };
 
   const openSignatureModal = (type) => {
-    if (!type) return;
+    if (!type || inputsDisabled) return;
     setSignatureType(type);
     setTempSignature(datosFactura[type] || "");
     setShowSignatureModal(true);
   };
 
   const openLegalConsentModal = (type) => {
-    if (bloqueada || !type) return;
+    if (inputsDisabled || !type) return;
     setPendingSignatureType(type);
     setShowLegalConsentModal(true);
   };
@@ -308,7 +312,7 @@ export default function FacturaMantenimiento({
   };
 
   const confirmarFirma = async () => {
-    if (!tempSignature || !signatureType) return;
+    if (!tempSignature || !signatureType || isProcessing) return;
     try {
       const firmaReducida = await reducirFirma(tempSignature);
       setDatosFactura((prev) => ({
@@ -326,6 +330,8 @@ export default function FacturaMantenimiento({
   };
 
   const guardarFactura = async () => {
+    if (isProcessing) return;
+
     const payload = {
       ...datosFactura,
       numeroFactura: datosFactura.numeroFactura || "01",
@@ -349,6 +355,8 @@ export default function FacturaMantenimiento({
   };
 
   const desbloquearFactura = () => {
+    if (isProcessing) return;
+
     if (!isAdmin) {
       globalThis.alert("Solo un administrador puede desbloquear la factura.");
       return;
@@ -359,6 +367,8 @@ export default function FacturaMantenimiento({
   };
 
   const eliminarFactura = () => {
+    if (isProcessing) return;
+
     if (!isAdmin) {
       globalThis.alert("Solo un administrador puede eliminar los datos bloqueados.");
       return;
@@ -724,16 +734,18 @@ export default function FacturaMantenimiento({
   };
 
   const imprimirFactura = () => {
+    if (isProcessing) return;
     abrirVentanaImpresion("print");
   };
 
   const descargarPdfNavegador = () => {
+    if (isProcessing) return;
     abrirVentanaImpresion("pdf");
   };
 
   // Valida que ambas firmas existan antes de devolver la orden firmada al flujo principal.
   const handleGenerarOrden = () => {
-    if (!onOrdenFirmada) return;
+    if (!onOrdenFirmada || isProcessing) return;
     if (!datosFactura.usuarioFirma || !datosFactura.autorizaFirma) {
       globalThis.alert("Debes registrar las firmas del usuario habitual/area y de quien autoriza.");
       return;
@@ -764,7 +776,7 @@ export default function FacturaMantenimiento({
       return (
         <div className="signature-preview">
           <img src={signatureData} alt="firma" className="signature-preview-img" />
-          {!bloqueada && (
+          {!inputsDisabled && (
             <button
               type="button"
               onClick={() => openLegalConsentModal(type)}
@@ -781,7 +793,7 @@ export default function FacturaMantenimiento({
       <button
         type="button"
         onClick={() => openLegalConsentModal(type)}
-        disabled={bloqueada}
+        disabled={inputsDisabled}
         className="btn-firmar"
       >
         Firmar
@@ -844,6 +856,12 @@ export default function FacturaMantenimiento({
       </div>
 
       <h1 className="factura-titulo">Orden De Mantenimiento</h1>
+      {bulkSelectionCount > 1 && (
+        <div className="factura-bulk-banner" role="status" aria-live="polite">
+          Se aplicará a {bulkSelectionCount} mantenimientos seleccionados.
+          {bulkSelectionSummary ? ` ${bulkSelectionSummary}` : ""}
+        </div>
+      )}
 
       {/* Datos del activo que sostienen la orden. */}
       <div className="bloque">
@@ -872,15 +890,15 @@ export default function FacturaMantenimiento({
         <div className="grid">
           <div className="campo">
             <label>Nombre</label>
-            <input name="usuarioNombre" value={datosFactura.usuarioNombre} onChange={handleChange} disabled={bloqueada} />
+            <input name="usuarioNombre" value={datosFactura.usuarioNombre} onChange={handleChange} disabled={inputsDisabled} />
           </div>
           <div className="campo">
             <label>Área</label>
-            <input name="usuarioArea" value={datosFactura.usuarioArea} onChange={handleChange} disabled={bloqueada} />
+            <input name="usuarioArea" value={datosFactura.usuarioArea} onChange={handleChange} disabled={inputsDisabled} />
           </div>
           <div className="campo">
             <label>Cargo</label>
-            <input name="usuarioCargo" value={datosFactura.usuarioCargo} onChange={handleChange} disabled={bloqueada} />
+            <input name="usuarioCargo" value={datosFactura.usuarioCargo} onChange={handleChange} disabled={inputsDisabled} />
           </div>
           <div className="campo-firma">
             <label>Firma usuario habitual / área</label>
@@ -898,11 +916,11 @@ export default function FacturaMantenimiento({
         <div className="grid">
           <div className="campo">
             <label>Nombre de quien autoriza</label>
-            <input name="autorizaNombre" value={datosFactura.autorizaNombre} onChange={handleChange} disabled={bloqueada} />
+            <input name="autorizaNombre" value={datosFactura.autorizaNombre} onChange={handleChange} disabled={inputsDisabled} />
           </div>
           <div className="campo">
             <label>Cargo de quien autoriza</label>
-            <input name="autorizaCargo" value={datosFactura.autorizaCargo} onChange={handleChange} disabled={bloqueada} />
+            <input name="autorizaCargo" value={datosFactura.autorizaCargo} onChange={handleChange} disabled={inputsDisabled} />
           </div>
           <div className="campo-firma">
             <label>Firma de quien autoriza</label>
@@ -943,25 +961,25 @@ export default function FacturaMantenimiento({
       {/* Acciones finales: guardar, bloquear, imprimir o cerrar. */}
       <div className="bloque acciones">
         {!bloqueada ? (
-          <button onClick={guardarFactura} className="btn-guardar" type="button">
+          <button onClick={guardarFactura} className="btn-guardar" type="button" disabled={isProcessing}>
             Guardar Y Bloquear
           </button>
         ) : (
           <div className="botones-bloqueados">
             {isAdmin && (
-              <button onClick={desbloquearFactura} className="btn-desbloquear" type="button">
+              <button onClick={desbloquearFactura} className="btn-desbloquear" type="button" disabled={isProcessing}>
                 Desbloquear (Admin)
               </button>
             )}
             {isAdmin && (
-              <button onClick={eliminarFactura} className="btn-eliminar" type="button">
+              <button onClick={eliminarFactura} className="btn-eliminar" type="button" disabled={isProcessing}>
                 Eliminar Datos (Admin)
               </button>
             )}
-            <button onClick={imprimirFactura} className="btn-imprimir" type="button">
+            <button onClick={imprimirFactura} className="btn-imprimir" type="button" disabled={isProcessing}>
               Imprimir
             </button>
-            <button onClick={descargarPdfNavegador} className="btn-imprimir" type="button">
+            <button onClick={descargarPdfNavegador} className="btn-imprimir" type="button" disabled={isProcessing}>
               Generar PDF
             </button>
             {onOrdenFirmada && (
@@ -969,13 +987,13 @@ export default function FacturaMantenimiento({
                   onClick={handleGenerarOrden}
                   className="btn-imprimir"
                   type="button"
-                  disabled={!datosFactura.usuarioFirma || !datosFactura.autorizaFirma}
+                  disabled={!datosFactura.usuarioFirma || !datosFactura.autorizaFirma || isProcessing}
                 >
-                  Generar Orden (Con PDF)
+                  {isProcessing ? "Generando..." : "Generar Orden (Con PDF)"}
                 </button>
             )}
             {onClose && (
-              <button onClick={onClose} className="btn-desbloquear" type="button">
+              <button onClick={onClose} className="btn-desbloquear" type="button" disabled={isProcessing}>
                 Cerrar
               </button>
             )}
@@ -1064,15 +1082,15 @@ export default function FacturaMantenimiento({
               <FirmaDigital
                 value={tempSignature}
                 onChange={setTempSignature}
-                disabled={bloqueada}
+                disabled={inputsDisabled}
                 label="Dibuja tu firma"
               />
             </div>
             <div className="signature-modal-footer">
-              <button className="btn-confirmar-firma" onClick={confirmarFirma} type="button" disabled={!tempSignature}>
+              <button className="btn-confirmar-firma" onClick={confirmarFirma} type="button" disabled={!tempSignature || isProcessing}>
                 Confirmar
               </button>
-              <button className="btn-cancelar-firma" onClick={closeSignatureModal} type="button">
+              <button className="btn-cancelar-firma" onClick={closeSignatureModal} type="button" disabled={isProcessing}>
                 Cancelar
               </button>
             </div>
@@ -1089,7 +1107,10 @@ FacturaMantenimiento.propTypes = {
   onClose: PropTypes.func,
   onOrdenFirmada: PropTypes.func,
   isAdmin: PropTypes.bool,
-  mantenimientoConsecutivo: PropTypes.oneOfType([PropTypes.string, PropTypes.number])
+  mantenimientoConsecutivo: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  isProcessing: PropTypes.bool,
+  bulkSelectionCount: PropTypes.number,
+  bulkSelectionSummary: PropTypes.string
 };
 
 FacturaMantenimiento.defaultProps = {
@@ -1098,7 +1119,10 @@ FacturaMantenimiento.defaultProps = {
   onClose: null,
   onOrdenFirmada: null,
   isAdmin: false,
-  mantenimientoConsecutivo: null
+  mantenimientoConsecutivo: null,
+  isProcessing: false,
+  bulkSelectionCount: 0,
+  bulkSelectionSummary: ""
 };
 
 
