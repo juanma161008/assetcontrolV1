@@ -1256,8 +1256,13 @@ export default function EntidadesPage() {
                 onChange={handleChange}
                 placeholder="Ej: 900123456"
                 style={styles.input}
-                disabled={saving || !isAdmin}
+                disabled={saving || !isAdmin || (editingId && String(form.nit || "").trim() !== "")}
               />
+              {editingId && String(form.nit || "").trim() !== "" && (
+                <small style={{ display: "block", marginTop: "6px", color: "#6b7280" }}>
+                  El NIT ya está registrado y no puede modificarse al editar.
+                </small>
+              )}
             </div>
 
             <div style={styles.formGroup}>

@@ -273,7 +273,7 @@ const getNumeroReporteLabel = (tipo = "") =>
       : "Número de reporte / consecutivo *";
 const getNumeroReporteHelp = (tipo = "") =>
   isPuntoRedTipo(tipo)
-    ? "Si el Punto de Red ya tiene número de reporte, escríbelo aquí. Si lo dejas vacío, el sistema generará un PR automáticamente."
+    ? "Si el Punto de Red ya tiene número de reporte, escríbelo aquí. Si lo dejas vacío, el sistema generará uno o más PR consecutivos automáticamente."
     : isCronogramaTipo(tipo)
       ? "Registra el área o dependencia para este cronograma. Este registro se guarda sin activo asociado."
       : "Se sugiere el siguiente consecutivo del historial. Puedes modificarlo antes de guardar.";
@@ -418,6 +418,7 @@ const splitReportNumber = (value = "") => {
 const buildDefaultMaintenanceForm = (tecnico = DEFAULT_TECNICO, entidadId = "") => ({
   fecha: new Date().toISOString().split("T")[0],
   numeroReporte: "",
+  cantidad: "1",
   activo: "",
   entidad_id: String(entidadId || "").trim(),
   areaPrincipal: "",
@@ -1020,6 +1021,44 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     const siguiente = obtenerSiguienteConsecutivo(consecutivos);
     return `PR.${String(siguiente).padStart(3, "0")}`;
   }, [mantenimientos]);
+
+  const buildPuntoRedNumeroReportes = useCallback((cantidad = 1, baseValue = "") => {
+    const amount = Number.parseInt(String(cantidad || "").trim(), 10);
+    const count = Number.isInteger(amount) && amount > 0 ? amount : 1;
+    const source = Array.isArray(mantenimientos) ? mantenimientos : [];
+    const used = new Set(
+      source
+        .filter((item) => isPuntoRedTipo(item.tipo))
+        .map((item) => extraerConsecutivo(getNumeroReporteMantenimiento(item)))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    );
+
+    if (count === 1) {
+      const base = String(baseValue || "").trim();
+      return [base || buildPuntoRedNumeroReporte()];
+    }
+
+    const base = String(baseValue || "").trim();
+    const parts = base ? splitReportNumber(base) : null;
+    if (base && !parts) {
+      return [];
+    }
+
+    const prefix = parts ? parts.prefix : "PR.";
+    const width = parts ? Math.max(parts.width || 1, String(parts.number).length) : 3;
+    const suffix = parts ? parts.suffix : "";
+    let candidate = parts ? parts.number : 1;
+    const results = [];
+
+    while (results.length < count) {
+      if (!used.has(candidate)) {
+        results.push(`${prefix}${String(candidate).padStart(width, "0")}${suffix}`);
+      }
+      candidate += 1;
+    }
+
+    return results;
+  }, [buildPuntoRedNumeroReporte, mantenimientos]);
 
   const buildGeneralNumeroReporte = useCallback((offset = 0) => {
     const source = sortMantenimientosByRecency(mantenimientos);
@@ -1815,50 +1854,92 @@ export default function MantenimientosPage({ selectedEntidadId }) {
         return;
       }
 
-      let numeroReporteValue = String(form.numeroReporte || "").trim();
-      if (isPuntoRedTipo(form.tipo) && !numeroReporteValue) {
-        numeroReporteValue = buildPuntoRedNumeroReporte();
-        setForm((prev) => ({ ...prev, numeroReporte: numeroReporteValue }));
-      } else if (!isCronogramaTipo(form.tipo) && !numeroReporteValue) {
-        numeroReporteValue = buildGeneralNumeroReporte();
-        setForm((prev) => ({ ...prev, numeroReporte: numeroReporteValue }));
-      }
-
-      if (!numeroReporteValue) {
-        setError("Campos obligatorios incompletos");
-        setIsCreating(false);
-        return;
-      }
-
-      if (isPuntoRedTipo(form.tipo) && !matchesAlphanumericReference(numeroReporteValue)) {
-        setError("Para Punto de Red debes registrar una referencia alfanumérica válida.");
-        setIsCreating(false);
-        return;
-      }
-
-      const payload = {
-        ...basePayload,
-        tipo: normalizePuntoRedTipo(form.tipo),
-        numeroReporte: numeroReporteValue,
-        descripcion: String(form.descripcion || "").trim(),
-        cambio_partes: String(form.cambioPartes || "").trim()
-      };
+      const numeroReporteBase = String(form.numeroReporte || "").trim();
+      const puntoRedCantidad = Number.parseInt(String(form.cantidad || "1").trim(), 10);
+      let numeroReporteValue = numeroReporteBase;
+      let createdPayloads = [];
 
       if (isPuntoRedTipo(form.tipo)) {
-        payload.entidad_id = Number(puntoRedEntidadId);
-        payload.sede = String(puntoRedEntidad.nombre || "").trim();
-        payload.area_principal = puntoRedAreaPrincipal;
+        if (!Number.isInteger(puntoRedCantidad) || puntoRedCantidad <= 0) {
+          setError("La cantidad de puntos de red debe ser un número entero mayor a cero.");
+          setIsCreating(false);
+          return;
+        }
+
+        if (puntoRedCantidad > 1 && numeroReporteBase && !splitReportNumber(numeroReporteBase)) {
+          setError(
+            "Para crear varios puntos de red debes indicar un número de reporte con consecutivo numérico válido, por ejemplo PR.001."
+          );
+          setIsCreating(false);
+          return;
+        }
+
+        const reportNumbers = buildPuntoRedNumeroReportes(puntoRedCantidad, numeroReporteBase);
+        if (reportNumbers.length !== puntoRedCantidad) {
+          setError("No se pudo generar la serie de números de reporte para los puntos de red.");
+          setIsCreating(false);
+          return;
+        }
+
+        numeroReporteValue = reportNumbers[0];
+        setForm((prev) => ({ ...prev, numeroReporte: numeroReporteValue }));
+
+        if (!matchesAlphanumericReference(numeroReporteValue)) {
+          setError("Para Punto de Red debes registrar una referencia alfanumérica válida.");
+          setIsCreating(false);
+          return;
+        }
+
+        createdPayloads = reportNumbers.map((numeroReporte) => ({
+          ...basePayload,
+          tipo: normalizePuntoRedTipo(form.tipo),
+          numeroReporte,
+          descripcion: String(form.descripcion || "").trim(),
+          cambio_partes: String(form.cambioPartes || "").trim(),
+          entidad_id: Number(puntoRedEntidadId),
+          sede: String(puntoRedEntidad.nombre || "").trim(),
+          area_principal: puntoRedAreaPrincipal
+        }));
+      } else {
+        if (!numeroReporteValue) {
+          numeroReporteValue = buildGeneralNumeroReporte();
+          setForm((prev) => ({ ...prev, numeroReporte: numeroReporteValue }));
+        }
+
+        if (!numeroReporteValue) {
+          setError("Campos obligatorios incompletos");
+          setIsCreating(false);
+          return;
+        }
+
+        createdPayloads = [{
+          ...basePayload,
+          tipo: normalizePuntoRedTipo(form.tipo),
+          numeroReporte: numeroReporteValue,
+          descripcion: String(form.descripcion || "").trim(),
+          cambio_partes: String(form.cambioPartes || "").trim()
+        }];
       }
 
-      const creado = await mantenimientoService.create(payload);
+      const creados = [];
+      for (const payload of createdPayloads) {
+        const creadoItem = await mantenimientoService.create(payload);
+        creados.push(creadoItem);
+      }
+
       clearTimeout(backlogTimer);
-      const createdLabel = creado?.id ?? "-";
-      setSuccess(isAdmin ? `Mantenimiento creado - ID ${createdLabel}` : "Mantenimiento creado");
+      const createdIds = creados.map((item) => item?.id).filter((id) => id !== null && id !== undefined);
+      const createdLabel = createdIds.length > 0 ? createdIds.join(", ") : "-";
+      setSuccess(
+        isAdmin
+          ? `Mantenimientos creados - ID ${createdLabel}`
+          : `Mantenimiento${createdIds.length > 1 ? "es" : ""} creado${createdIds.length > 1 ? "s" : ""}`
+      );
       setToast({
         tone: "success",
         message: isAdmin
-          ? `Mantenimiento guardado correctamente (ID ${createdLabel})`
-          : "Mantenimiento guardado correctamente"
+          ? `Mantenimientos guardados correctamente (ID ${createdLabel})`
+          : `Mantenimiento${createdIds.length > 1 ? "es" : ""} guardado${createdIds.length > 1 ? "s" : ""}`
       });
       setShowCreateModal(false);
       await cargarMantenimientos();
@@ -3834,20 +3915,39 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                   <input id="create-mantenimiento-fecha" type="date" name="fecha" value={form.fecha} onChange={handleChange} aria-label="Fecha" />
                 </div>
                 {!isTipoDoble(form.tipo) && (
-                  <div className="maintenance-form-field">
-                    <label htmlFor="create-mantenimiento-reporte">{getNumeroReporteLabel(form.tipo)}</label>
-                    <input
-                      id="create-mantenimiento-reporte"
-                      type="text"
-                      name="numeroReporte"
-                      value={form.numeroReporte}
-                      onChange={handleChange}
-                      placeholder={getNumeroReporteLabel(form.tipo)}
-                      aria-label="Número de reporte"
-                      required={!isPuntoRedTipo(form.tipo)}
-                    />
-                    <small>{getNumeroReporteHelp(form.tipo)}</small>
-                  </div>
+                  <>
+                    <div className="maintenance-form-field">
+                      <label htmlFor="create-mantenimiento-reporte">{getNumeroReporteLabel(form.tipo)}</label>
+                      <input
+                        id="create-mantenimiento-reporte"
+                        type="text"
+                        name="numeroReporte"
+                        value={form.numeroReporte}
+                        onChange={handleChange}
+                        placeholder={getNumeroReporteLabel(form.tipo)}
+                        aria-label="Número de reporte"
+                        required={!isPuntoRedTipo(form.tipo)}
+                      />
+                      <small>{getNumeroReporteHelp(form.tipo)}</small>
+                    </div>
+                    {isPuntoRedTipo(form.tipo) && (
+                      <div className="maintenance-form-field">
+                        <label htmlFor="create-mantenimiento-cantidad">Cantidad de puntos de red</label>
+                        <input
+                          id="create-mantenimiento-cantidad"
+                          type="number"
+                          min="1"
+                          step="1"
+                          name="cantidad"
+                          value={form.cantidad}
+                          onChange={handleChange}
+                          placeholder="1"
+                          aria-label="Cantidad de puntos de red"
+                        />
+                        <small>Registra cuántos puntos de red se hicieron. El sistema generará números PR consecutivos.</small>
+                      </div>
+                    )}
+                  </>
                 )}
                 {createActivoField}
                 <div className="maintenance-form-field">

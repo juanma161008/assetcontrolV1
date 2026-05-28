@@ -381,6 +381,7 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
   const [columnFilters, setColumnFilters] = useState(INITIAL_COLUMN_FILTERS);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [activoDuplicate, setActivoDuplicate] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -415,6 +416,7 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
   const [isLoadingHistorial, setIsLoadingHistorial] = useState(false);
   const importInputRef = useRef(null);
   const reportLogoCacheRef = useRef(null);
+  const entidadSelectRef = useRef(null);
   const MAX_BAJA_ADJUNTOS = 4;
   const MAX_BAJA_BYTES = 2 * 1024 * 1024;
   const ALLOWED_BAJA_TYPES = [
@@ -852,6 +854,26 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
   }, [cargarActivos, cargarEntidades, cargarBajas]);
 
   useEffect(() => {
+    const onStorage = (event) => {
+      if (event.key === "activos:updated") {
+        cargarActivos();
+        cargarBajas();
+        cargarEntidades();
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    const interval = setInterval(() => {
+      cargarActivos();
+    }, 10000);
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      clearInterval(interval);
+    };
+  }, [cargarActivos, cargarBajas, cargarEntidades]);
+
+  useEffect(() => {
     if (!showFormModal || editId) return;
     if (!entidadActivaId) return;
     setForm((prev) => {
@@ -863,6 +885,15 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
         areaSecundaria: ""
       };
     });
+    // focus the first field and scroll it into view for keyboard users
+    setTimeout(() => {
+      try {
+        entidadSelectRef.current?.focus();
+        entidadSelectRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } catch (e) {
+        // ignore
+      }
+    }, 50);
   }, [showFormModal, editId, entidadActivaId]);
 
   useEffect(() => {
@@ -1220,12 +1251,15 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
     const properCaseFields = new Set([
       "activo",
       "equipo",
-      "marca",
       "procesador"
     ]);
     let nextValue = !isSelectField && properCaseFields.has(name) ? toProperCase(value) : value;
 
     if (name === "nombre") {
+      nextValue = String(value || "").toUpperCase();
+    }
+
+    if (name === "marca") {
       nextValue = String(value || "").toUpperCase();
     }
 
@@ -1235,6 +1269,24 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
 
     if (name === "vida_util_anios") {
       nextValue = value.replace(/[^\d]/g, "");
+    }
+
+    if (name === "activo") {
+      const normalized = String(nextValue || "").trim().toLowerCase();
+      const found = (Array.isArray(activos) ? activos : []).find((item) => {
+        if (!item || !item.activo) return false;
+        if (Number(item.id) === Number(editId)) return false;
+        return String(item.activo || "").toLowerCase() === normalized;
+      });
+      if (found) {
+        try {
+          setActivoDuplicate({ id: found.id, message: `El activo ${nextValue} ya existe (${obtenerConsecutivoActivo(found.id)})` });
+        } catch (e) {
+          setActivoDuplicate({ id: found.id, message: `El activo ${nextValue} ya existe` });
+        }
+      } else {
+        setActivoDuplicate(null);
+      }
     }
 
     setForm((prev) => {
@@ -1282,9 +1334,22 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
     }));
   };
 
+  const handleFormFocus = useCallback((event) => {
+    const target = event.target;
+    if (!target || !(target instanceof HTMLElement)) return;
+    setTimeout(() => {
+      try {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+      } catch (e) {
+        // ignore
+      }
+    }, 0);
+  }, []);
+
   const resetForm = () => {
     setForm(INITIAL_FORM);
     setEditId(null);
+    setActivoDuplicate(null);
   };
 
   const formModalPresence = useAnimatedPresence(showFormModal, 220, resetForm);
@@ -1460,9 +1525,11 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
     if (editId) {
       const response = await httpClient.put(`/api/activos/${editId}`, payload);
       setSuccess(response.data.message || "Activo actualizado");
+      try { localStorage.setItem("activos:updated", String(Date.now())); } catch (e) {}
     } else {
       await httpClient.post("/api/activos", payload);
       setSuccess("Activo creado correctamente");
+      try { localStorage.setItem("activos:updated", String(Date.now())); } catch (e) {}
     }
   };
 
@@ -3483,12 +3550,13 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
               </button>
             </div>
             <div className="modal-body">
-              <form className="form-activo" onSubmit={handleSubmit}>
+              <form className="form-activo" onSubmit={handleSubmit} onFocusCapture={handleFormFocus}>
                 <div className="entidad-select-container">
                   <label htmlFor="entidad-select" className="sede-label">Entidad *</label>
                   <select
                     id="entidad-select"
                     name="entidad_id"
+                    ref={entidadSelectRef}
                     value={form.entidad_id}
                     onChange={handleChange}
                     disabled={isSubmitting}
@@ -3539,6 +3607,11 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
 
                 <div className="form-row">
                   <input name="activo" value={form.activo} onChange={handleChange} placeholder="Código del activo (opcional)" className="form-field" />
+                  {activoDuplicate && (
+                    <small className="form-warning" style={{ color: "#b45309" }}>
+                      {activoDuplicate.message}
+                    </small>
+                  )}
                   <input name="serial" value={form.serial} onChange={handleChange} placeholder={categoriaProfile.requiredFields.includes("serial") ? "Serial *" : "Serial"} className="form-field" />
                 </div>
                 <div className="form-row">
