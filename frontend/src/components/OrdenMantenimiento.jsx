@@ -4,60 +4,19 @@ import logo from "../assets/logos/logom5.png";
 import "../styles/Orden.css";
 import FirmaDigital from "./shared/FirmaDigital";
 import { toProperCase } from "../utils/formatters";
+import { imageToDataUrl } from "../utils/imageToDataUrl";
 
 // Componente principal de la orden de mantenimiento: guarda borradores, abre modales,
 // captura firmas y genera la versión imprimible/PDF.
 const FACTURA_STORAGE_PREFIX = "factura_mantenimiento_";
 const isKeyboardActivation = (event) => event.key === "Enter" || event.key === " ";
 
-const formatearNumeroFactura = (numero = 1) => String(Math.max(1, Number(numero) || 1)).padStart(2, "0");
-
-const extraerConsecutivoFactura = (value) => {
-  const source = String(value || "").trim();
-  if (!source) return null;
-  if (/^\d+$/.test(source)) {
-    const direct = Number(source);
-    return Number.isInteger(direct) && direct > 0 ? direct : null;
-  }
-
-  const matches = source.match(/\d+/g);
-  if (!matches.length) return null;
-  const num = Number(matches[matches.length - 1]);
-  return Number.isInteger(num) && num > 0 ? num : null;
-};
-
-const obtenerSiguienteConsecutivo = (numeros = []) => {
-  const usados = new Set(
-    (Array.isArray(numeros) ? numeros : [])
-      .map((item) => Number(item))
-      .filter((item) => Number.isInteger(item) && item > 0)
-  );
-
-  let siguiente = 1;
-  while (usados.has(siguiente)) {
-    siguiente += 1;
-  }
-  return siguiente;
-};
-
-const listarConsecutivosFacturas = (excludeKey = "") => {
-  const browserWindow = globalThis.window;
-  if (!browserWindow) return [];
-  const keys = Object.keys(localStorage).filter((key) =>
-    key.startsWith(FACTURA_STORAGE_PREFIX)
-  );
-
-  return keys
-    .filter((key) => key !== excludeKey)
-    .map((key) => {
-      try {
-        const parsed = JSON.parse(localStorage.getItem(key) || "{}");
-        return extraerConsecutivoFactura(parsed.numeroFactura);
-      } catch {
-        return null;
-      }
-    })
-    .filter((item) => Number.isInteger(item) && item > 0);
+const getDefaultOrderNumber = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `MT-${year}${month}${day}-00001`;
 };
 
 const formatearFecha = (fechaInput) => {
@@ -109,7 +68,7 @@ const escapeHtml = (value) =>
     .replace(/'/g, "&#39;");
 
 const facturaTieneFirmasCompletas = (payload = {}) =>
-  Boolean(String(payload.usuarioFirma || "").trim() && String(payload.autorizaFirma || "").trim());
+  Boolean(String(payload.usuarioFirma || "").trim());
 
 // Texto legal que se muestra antes de habilitar cualquier firma.
 const LEGAL_DECLARATION = {
@@ -175,6 +134,8 @@ export default function FacturaMantenimiento({
   onOrdenFirmada,
   isAdmin,
   mantenimientoConsecutivo,
+  numeroOrdenSugerido,
+  ordenExistente,
   isProcessing,
   bulkSelectionCount,
   bulkSelectionSummary
@@ -192,15 +153,12 @@ export default function FacturaMantenimiento({
 
   // Estado local del formulario, los modales y la firma temporal que se está editando.
   const [datosFactura, setDatosFactura] = useState({
-    numeroFactura: "01",
+    numeroFactura: numeroOrdenSugerido || getDefaultOrderNumber(),
     fecha: fechaFormateadaAuto,
     usuarioNombre: "",
     usuarioArea: "",
     usuarioCargo: "",
-    usuarioFirma: "",
-    autorizaNombre: "",
-    autorizaCargo: "",
-    autorizaFirma: ""
+    usuarioFirma: ""
   });
 
   const [bloqueada, setBloqueada] = useState(false);
@@ -209,48 +167,77 @@ export default function FacturaMantenimiento({
   const [pendingSignatureType, setPendingSignatureType] = useState("");
   const [signatureType, setSignatureType] = useState("");
   const [tempSignature, setTempSignature] = useState("");
+  const [logoDataUrl, setLogoDataUrl] = useState(logo);
   const inputsDisabled = bloqueada || isProcessing;
+
+  // Convierte el logo a data URI: el documento impreso se abre en ventanas/PDF
+  // que no siempre resuelven la ruta del asset del propio origen de la app.
+  useEffect(() => {
+    let cancelado = false;
+    imageToDataUrl(logo)
+      .then((dataUrl) => {
+        if (!cancelado && dataUrl) setLogoDataUrl(dataUrl);
+      })
+      .catch(() => {
+        // Si falla la conversion, se conserva la ruta original del logo.
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
 
   // Recupera un borrador guardado o crea un nuevo consecutivo cuando no existe información previa.
   useEffect(() => {
+    // Si ya existe una orden generada en el servidor para este mantenimiento, prevalece
+    // sobre el borrador local: garantiza que se vea "Bloqueada" en cualquier dispositivo.
+    if (ordenExistente) {
+      setDatosFactura((prev) => ({
+        ...prev,
+        numeroFactura: ordenExistente.numero || numeroOrdenSugerido || prev.numeroFactura,
+        fecha: fechaFormateadaAuto,
+        usuarioNombre: ordenExistente.firmante_nombre || "",
+        usuarioArea: ordenExistente.firmante_area || "",
+        usuarioCargo: ordenExistente.firmante_cargo || "",
+        usuarioFirma: ordenExistente.usuario_firma || ""
+      }));
+      setBloqueada(true);
+      return;
+    }
+
+    // Sin una orden real en el servidor, el formulario nunca queda "Bloqueada": el
+    // bloqueo solo lo determina que la orden ya exista en Ordenes de trabajo, no que
+    // haya un borrador local guardado (eso solo se usa para no perder lo ya escrito).
     const guardada = localStorage.getItem(storageKey);
     if (guardada) {
       try {
         const parsed = JSON.parse(guardada);
         const payloadCargado = {
           ...parsed,
-          usuarioFirma: parsed.usuarioFirma || parsed.tecnicoFirma || "",
-          autorizaFirma: parsed.autorizaFirma || ""
+          usuarioFirma: parsed.usuarioFirma || parsed.tecnicoFirma || ""
         };
         setDatosFactura((prev) => ({
           ...prev,
           ...payloadCargado,
-          numeroFactura: payloadCargado.numeroFactura || prev.numeroFactura,
+          numeroFactura: payloadCargado.numeroFactura || numeroOrdenSugerido || prev.numeroFactura,
           fecha: payloadCargado.fecha || prev.fecha
         }));
-        setBloqueada(facturaTieneFirmasCompletas(payloadCargado));
+        setBloqueada(false);
         return;
       } catch {
         // Ignorar JSON dañado.
       }
     }
 
-    const siguiente = formatearNumeroFactura(
-      obtenerSiguienteConsecutivo(listarConsecutivosFacturas(storageKey))
-    );
     setDatosFactura({
-      numeroFactura: siguiente,
+      numeroFactura: numeroOrdenSugerido || getDefaultOrderNumber(),
       fecha: fechaFormateadaAuto,
       usuarioNombre: "",
       usuarioArea: "",
       usuarioCargo: "",
-      usuarioFirma: "",
-      autorizaNombre: "",
-      autorizaCargo: "",
-      autorizaFirma: ""
+      usuarioFirma: ""
     });
     setBloqueada(false);
-  }, [storageKey, fechaFormateadaAuto]);
+  }, [storageKey, fechaFormateadaAuto, numeroOrdenSugerido, ordenExistente]);
 
   // Bloquea el scroll de la pagina cuando hay un modal abierto.
   useEffect(() => {
@@ -271,9 +258,7 @@ export default function FacturaMantenimiento({
     const properCaseFields = new Set([
       "usuarioNombre",
       "usuarioArea",
-      "usuarioCargo",
-      "autorizaNombre",
-      "autorizaCargo"
+      "usuarioCargo"
     ]);
     const nextValue = properCaseFields.has(name) ? toProperCase(value) : value;
     setDatosFactura((prev) => ({ ...prev, [name]: nextValue }));
@@ -334,23 +319,22 @@ export default function FacturaMantenimiento({
 
     const payload = {
       ...datosFactura,
-      numeroFactura: datosFactura.numeroFactura || "01",
+      numeroFactura: datosFactura.numeroFactura || numeroOrdenSugerido || getDefaultOrderNumber(),
       fecha: formatearFecha(datosFactura.fecha || mantenimiento.fecha)
     };
 
     if (payload.usuarioFirma) {
       payload.usuarioFirma = await reducirFirma(payload.usuarioFirma);
     }
-    if (payload.autorizaFirma) {
-      payload.autorizaFirma = await reducirFirma(payload.autorizaFirma);
-    }
 
     localStorage.setItem(storageKey, JSON.stringify(payload));
     setDatosFactura(payload);
-    const bloqueoFinal = facturaTieneFirmasCompletas(payload);
-    setBloqueada(bloqueoFinal);
+    // El bloqueo real solo ocurre cuando la orden ya existe en el servidor (Ordenes de
+    // trabajo); guardar aqui solo conserva el borrador para no perder lo ya escrito.
     globalThis.alert(
-      bloqueoFinal ? "Factura guardada y bloqueada" : "Factura guardada como borrador. Completa las dos firmas para bloquearla."
+      facturaTieneFirmasCompletas(payload)
+        ? "Borrador guardado. Usa \"Generar Orden\" para crear la orden en Órdenes de trabajo."
+        : "Orden guardada como borrador. Completa la firma del usuario habitual para poder generarla."
     );
   };
 
@@ -358,10 +342,10 @@ export default function FacturaMantenimiento({
     if (isProcessing) return;
 
     if (!isAdmin) {
-      globalThis.alert("Solo un administrador puede desbloquear la factura.");
+      globalThis.alert("Solo un administrador puede desbloquear la orden.");
       return;
     }
-    const ok = globalThis.confirm("¿Deseas desbloquear la factura para editarla");
+    const ok = globalThis.confirm("¿Deseas desbloquear la orden para editarla?");
     if (!ok) return;
     setBloqueada(false);
   };
@@ -373,34 +357,21 @@ export default function FacturaMantenimiento({
       globalThis.alert("Solo un administrador puede eliminar los datos bloqueados.");
       return;
     }
-    const ok = globalThis.confirm("Se eliminarán los datos guardados de la factura. ¿Continuar");
+    const ok = globalThis.confirm("Se eliminarán los datos guardados de la orden. ¿Continuar?");
     if (!ok) return;
 
     localStorage.removeItem(storageKey);
 
-    const siguiente = formatearNumeroFactura(
-      obtenerSiguienteConsecutivo(listarConsecutivosFacturas(storageKey))
-    );
     setDatosFactura({
-      numeroFactura: siguiente,
+      numeroFactura: numeroOrdenSugerido || getDefaultOrderNumber(),
       fecha: fechaFormateadaAuto,
       usuarioNombre: "",
       usuarioArea: "",
       usuarioCargo: "",
-      usuarioFirma: "",
-      autorizaNombre: "",
-      autorizaCargo: "",
-      autorizaFirma: ""
+      usuarioFirma: ""
     });
     setBloqueada(false);
   };
-
-  let referenciaMantenimiento = "SIN REF";
-  if (Number(mantenimientoConsecutivo) > 0) {
-    referenciaMantenimiento = `MT-${String(mantenimientoConsecutivo).padStart(4, "0")}`;
-  } else if (mantenimiento.id) {
-    referenciaMantenimiento = `MT-${String(mantenimiento.id).padStart(4, "0")}`;
-  }
 
   const mantenimientoIdDocumento =
     Number(mantenimientoConsecutivo) > 0
@@ -426,7 +397,7 @@ export default function FacturaMantenimiento({
         <head>
           <meta charset="UTF-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Factura ${escapeHtml(datosFactura.numeroFactura || "00")}</title>
+          <title>Orden de mantenimiento ${escapeHtml(datosFactura.numeroFactura || "00")}</title>
           <style>
             * {
               box-sizing: border-box;
@@ -641,18 +612,16 @@ export default function FacturaMantenimiento({
         <body>
           <div class="doc">
             <section class="header">
-              <img src="${escapeHtml(logo)}" alt="MICROCINCO" />
+              <img src="${escapeHtml(logoDataUrl)}" alt="MICROCINCO" />
               <div class="empresa">
                 <h2>MICROCINCO S.A.S</h2>
                 <p>MEDELLIN, ANTIOQUIA</p>
                 <p>MDAITAGUI@MICROCINCO.COM</p>
               </div>
               <div class="info">
-                <p><b>Factura N.°:</b> ${escapeHtml(datosFactura.numeroFactura || "-")}</p>
+                <p><b>Orden N.°:</b> ${escapeHtml(datosFactura.numeroFactura || "-")}</p>
                 <p><b>Fecha:</b> ${escapeHtml(formatearFecha(datosFactura.fecha))}</p>
-                <p><b>Referencia:</b> ${escapeHtml(referenciaMantenimiento)}</p>
                 <p><b>Activo:</b> ${escapeHtml(numeroActivo)}</p>
-                <p><b>Nro Reporte:</b> ${escapeHtml(numeroReporte)}</p>
               </div>
             </section>
 
@@ -662,7 +631,6 @@ export default function FacturaMantenimiento({
               <h3>Datos Del Activo</h3>
               <div class="grid">
                 <div class="item"><b>Activo:</b> ${escapeHtml(activo.activo || activo.nombre || "-")}</div>
-                <div class="item"><b>N.º De Reporte:</b> ${escapeHtml(numeroReporte)}</div>
                 <div class="item"><b>Serial:</b> ${escapeHtml(activo.serial || "-")}</div>
                 <div class="item"><b>Equipo:</b> ${escapeHtml(activo.equipo || "-")}</div>
                 <div class="item"><b>Marca / Modelo:</b> ${escapeHtml(activo.marca || "-")} / ${escapeHtml(activo.modelo || "-")}</div>
@@ -684,7 +652,7 @@ export default function FacturaMantenimiento({
                 <div class="item"><b>Id Mantenimiento:</b> ${escapeHtml(mantenimientoIdDocumento)}</div>
                 <div class="item" style="grid-column: span 2;"><b>Cambio de partes:</b> ${escapeHtml(cambioPartes)}</div>
               </div>
-              <div class="texto"><b>Trabajo Realizado:</b> ${escapeHtml(mantenimiento.descripcion || "Sin descripción")}</div>
+              <div class="texto"><b>Observaciones:</b> ${escapeHtml(mantenimiento.descripcion || "Sin observaciones")}</div>
             </section>
 
             <section class="bloque">
@@ -697,10 +665,8 @@ export default function FacturaMantenimiento({
                   ${renderFirma(datosFactura.usuarioFirma)}
                 </div>
                 <div class="firma-card">
-                  <p><b>Quien Autoriza</b></p>
-                  <p>${escapeHtml(datosFactura.autorizaNombre || "-")}</p>
-                  <p>${escapeHtml(datosFactura.autorizaCargo || "-")}</p>
-                  ${renderFirma(datosFactura.autorizaFirma)}
+                  <p><b>Autorización del Interventor</b></p>
+                  <p>Pendiente de autorización del interventor de la entidad.</p>
                 </div>
               </div>
             </section>
@@ -746,27 +712,14 @@ export default function FacturaMantenimiento({
   // Valida que ambas firmas existan antes de devolver la orden firmada al flujo principal.
   const handleGenerarOrden = () => {
     if (!onOrdenFirmada || isProcessing) return;
-    if (!datosFactura.usuarioFirma || !datosFactura.autorizaFirma) {
-      globalThis.alert("Debes registrar las firmas del usuario habitual/area y de quien autoriza.");
-      return;
-    }
-
-    if (!String(datosFactura.autorizaNombre || "").trim() || !String(datosFactura.autorizaCargo || "").trim()) {
-      globalThis.alert("Debes registrar nombre y cargo de quien autoriza.");
-      return;
-    }
-
-    const usuarioHabitual = String(datosFactura.usuarioNombre || "").trim().toLowerCase();
-    const autorizaNombre = String(datosFactura.autorizaNombre || "").trim().toLowerCase();
-    if (usuarioHabitual && autorizaNombre && usuarioHabitual === autorizaNombre) {
-      globalThis.alert("Quien autoriza debe ser diferente al usuario habitual.");
+    if (!datosFactura.usuarioFirma) {
+      globalThis.alert("Debes registrar la firma del usuario habitual/área.");
       return;
     }
 
     onOrdenFirmada({
       ...datosFactura,
-      usuarioFirma: datosFactura.usuarioFirma,
-      autorizaFirma: datosFactura.autorizaFirma
+      usuarioFirma: datosFactura.usuarioFirma
     });
   };
 
@@ -805,14 +758,8 @@ export default function FacturaMantenimiento({
     activo.activo ||
     activo.nombre ||
     (isAdmin && activo.id ? `Activo #${activo.id}` : "Activo");
-  const numeroReporte =
-    mantenimiento.numeroReporte ||
-    mantenimiento.numero_reporte ||
-    mantenimiento.numeroreporte ||
-    "-";
   const signatureModalTitleMap = {
-    usuarioFirma: "Firma usuario habitual / área",
-    autorizaFirma: "Firma de quien autoriza"
+    usuarioFirma: "Firma usuario habitual / área"
   };
   const signatureModalTitle = signatureModalTitleMap[signatureType] || "Firma";
   const consentTargetTitle = signatureModalTitleMap[pendingSignatureType] || "Firma";
@@ -842,14 +789,12 @@ export default function FacturaMantenimiento({
         </div>
 
         <div className="factura-info">
-          <p><strong>Factura N.°:</strong> {datosFactura.numeroFactura}</p>
+          <p><strong>Orden N.°:</strong> {datosFactura.numeroFactura}</p>
           <p><strong>Fecha:</strong> {formatearFecha(datosFactura.fecha)}</p>
-          <p><strong>Referencia:</strong> {referenciaMantenimiento}</p>
           <p><strong>Activo:</strong> {numeroActivo}</p>
-          <p><strong>Nro Reporte:</strong> {numeroReporte}</p>
           <div className="estado-factura">
             <span className={`badge ${bloqueada ? "badge-bloqueada" : "badge-editable"}`}>
-              {bloqueada ? "Bloqueada" : "Editable"}
+              {bloqueada ? (ordenExistente?.estado || "Bloqueada") : "Editable"}
             </span>
           </div>
         </div>
@@ -868,7 +813,6 @@ export default function FacturaMantenimiento({
         <h3>Datos Del Activo</h3>
         <div className="grid">
           <p><strong>Activo:</strong> {activo.activo || activo.nombre || "-"}</p>
-          <p><strong>N.º De Reporte:</strong> {numeroReporte}</p>
           <p><strong>Serial:</strong> {activo.serial || "-"}</p>
           <p><strong>Equipo:</strong> {activo.equipo || "-"}</p>
           <p><strong>Marca:</strong> {activo.marca || "-"}</p>
@@ -910,25 +854,6 @@ export default function FacturaMantenimiento({
         </div>
       </div>
 
-      {/* Datos y firma de quien autoriza la intervención. */}
-      <div className="bloque">
-        <h3>Autorización</h3>
-        <div className="grid">
-          <div className="campo">
-            <label>Nombre de quien autoriza</label>
-            <input name="autorizaNombre" value={datosFactura.autorizaNombre} onChange={handleChange} disabled={inputsDisabled} />
-          </div>
-          <div className="campo">
-            <label>Cargo de quien autoriza</label>
-            <input name="autorizaCargo" value={datosFactura.autorizaCargo} onChange={handleChange} disabled={inputsDisabled} />
-          </div>
-          <div className="campo-firma">
-            <label>Firma de quien autoriza</label>
-            {renderSignaturePreview(datosFactura.autorizaFirma, "autorizaFirma")}
-          </div>
-        </div>
-      </div>
-
       {/* Tipo de mantenimiento marcado en la orden. */}
       <div className="bloque">
         <h3>Tipo De Mantenimiento</h3>
@@ -940,13 +865,13 @@ export default function FacturaMantenimiento({
         </div>
       </div>
 
-      {/* Descripción del trabajo realizado. */}
+      {/* Observaciones del trabajo realizado. */}
       <div className="bloque">
-        <h3>Trabajo Realizado</h3>
+        <h3>Observaciones</h3>
         <div className="grid">
           <p><strong>Cambio de partes:</strong> {cambioPartes}</p>
         </div>
-        <textarea className="textarea" value={mantenimiento.descripcion || "Sin descripción"} readOnly />
+        <textarea className="textarea" value={mantenimiento.descripcion || "Sin observaciones"} readOnly />
       </div>
 
       {/* Técnico responsable y fecha de intervención. */}
@@ -958,12 +883,29 @@ export default function FacturaMantenimiento({
         </div>
       </div>
 
-      {/* Acciones finales: guardar, bloquear, imprimir o cerrar. */}
+      {/* Acciones finales: guardar, generar la orden, imprimir o cerrar. */}
       <div className="bloque acciones">
         {!bloqueada ? (
-          <button onClick={guardarFactura} className="btn-guardar" type="button" disabled={isProcessing}>
-            Guardar Y Bloquear
-          </button>
+          <div className="botones-bloqueados">
+            <button onClick={guardarFactura} className="btn-guardar" type="button" disabled={isProcessing}>
+              Guardar Borrador
+            </button>
+            {onOrdenFirmada && (
+              <button
+                onClick={handleGenerarOrden}
+                className="btn-imprimir"
+                type="button"
+                disabled={!datosFactura.usuarioFirma || isProcessing}
+              >
+                {isProcessing ? "Generando..." : "Guardar Y Generar Orden"}
+              </button>
+            )}
+            {onClose && (
+              <button onClick={onClose} className="btn-desbloquear" type="button" disabled={isProcessing}>
+                Cerrar
+              </button>
+            )}
+          </div>
         ) : (
           <div className="botones-bloqueados">
             {isAdmin && (
@@ -982,16 +924,6 @@ export default function FacturaMantenimiento({
             <button onClick={descargarPdfNavegador} className="btn-imprimir" type="button" disabled={isProcessing}>
               Generar PDF
             </button>
-            {onOrdenFirmada && (
-                <button
-                  onClick={handleGenerarOrden}
-                  className="btn-imprimir"
-                  type="button"
-                  disabled={!datosFactura.usuarioFirma || !datosFactura.autorizaFirma || isProcessing}
-                >
-                  {isProcessing ? "Generando..." : "Generar Orden (Con PDF)"}
-                </button>
-            )}
             {onClose && (
               <button onClick={onClose} className="btn-desbloquear" type="button" disabled={isProcessing}>
                 Cerrar
@@ -1108,6 +1040,8 @@ FacturaMantenimiento.propTypes = {
   onOrdenFirmada: PropTypes.func,
   isAdmin: PropTypes.bool,
   mantenimientoConsecutivo: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  numeroOrdenSugerido: PropTypes.string,
+  ordenExistente: PropTypes.object,
   isProcessing: PropTypes.bool,
   bulkSelectionCount: PropTypes.number,
   bulkSelectionSummary: PropTypes.string
@@ -1120,6 +1054,8 @@ FacturaMantenimiento.defaultProps = {
   onOrdenFirmada: null,
   isAdmin: false,
   mantenimientoConsecutivo: null,
+  numeroOrdenSugerido: "",
+  ordenExistente: null,
   isProcessing: false,
   bulkSelectionCount: 0,
   bulkSelectionSummary: ""

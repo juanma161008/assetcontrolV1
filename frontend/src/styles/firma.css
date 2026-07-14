@@ -26,19 +26,26 @@
 
 .firma-canvas {
   width: 100%;
-  max-width: 400px;
-  height: 150px;
+  max-width: 100%;
+  height: 180px;
   border: 2px solid #4f46e5;
   border-radius: 6px;
   background: white;
   cursor: crosshair;
   touch-action: none; /* Importante para touch */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: contain;
+  display: block;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.firma-canvas:disabled {
+.firma-canvas:disabled,
+.firma-canvas[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.6;
+  pointer-events: none;
 }
 
 .firma-preview {
@@ -98,7 +105,7 @@
 /* Responsive */
 @media (max-width: 768px) {
   .firma-canvas {
-    height: 120px;
+    height: 160px;
   }
   
   .firma-controls {
@@ -109,6 +116,18 @@
   .btn-limpiar {
     width: 100%;
     justify-content: center;
+  }
+}
+
+@media (min-width: 481px) and (max-width: 1024px) and (pointer: coarse) {
+  .firma-canvas {
+    height: 210px;
+  }
+}
+
+@media (max-width: 480px) {
+  .firma-canvas {
+    height: 140px;
   }
 }
 

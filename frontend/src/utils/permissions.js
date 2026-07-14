@@ -11,7 +11,8 @@ const PERMISSION_LABELS = {
   EDITAR_MANTENIMIENTO: "Editar mantenimientos",
   ELIMINAR_MANTENIMIENTO: "Eliminar mantenimientos",
   GENERAR_ORDEN: "Generar órdenes",
-  FIRMAR_ORDEN: "Firmar órdenes"
+  FIRMAR_ORDEN: "Firmar órdenes",
+  FIRMAR_ORDEN_INTERVENTOR: "Firmar autorización de interventor"
 };
 
 export function getPermissions(user) {
@@ -63,6 +64,10 @@ export function getRoleLabel(role) {
 
   if (roleId === 3) {
     return "Usuario";
+  }
+
+  if (roleId === 4) {
+    return "Interventor";
   }
 
   return String(role || "Sin rol");

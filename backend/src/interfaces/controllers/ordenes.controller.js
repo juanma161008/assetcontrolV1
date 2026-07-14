@@ -1,5 +1,8 @@
 import CrearOrden from "../../application/ordenes/CrearOrden.js";
 import FirmarOrden from "../../application/ordenes/FirmarOrden.js";
+import EnviarOrdenInterventor from "../../application/ordenes/EnviarOrdenInterventor.js";
+import FirmarOrdenInterventor from "../../application/ordenes/FirmarOrdenInterventor.js";
+import RechazarOrdenInterventor from "../../application/ordenes/RechazarOrdenInterventor.js";
 import ListarOrden from "../../application/ordenes/ListarOrden.js";
 import ObtenerOrden from "../../application/ordenes/ObtenerOrden.js";
 import EliminarOrden from "../../application/ordenes/EliminarOrden.js";
@@ -87,6 +90,30 @@ const notificarAdminsYAutor = async (req, payload = {}) => {
   await Promise.all(tasks);
 };
 
+const notificarCreadorYAdmins = async (orden, payload = {}) => {
+  if (typeof userRepo.findAll !== "function") {
+    return;
+  }
+
+  const creadorId = Number(orden?.creado_por);
+  const users = await userRepo.findAll();
+  const admins = (Array.isArray(users) ? users : []).filter(
+    (user) => Number(user?.rol_id) === 1
+  );
+
+  const destinatarios = new Set();
+  if (creadorId) destinatarios.add(creadorId);
+  admins.forEach((admin) => {
+    if (admin?.id) destinatarios.add(Number(admin.id));
+  });
+
+  const tasks = [...destinatarios].map((usuarioId) =>
+    crearNotificacionUseCase.execute({ ...payload, usuario_id: usuarioId })
+  );
+
+  await Promise.all(tasks);
+};
+
 export async function crearOrden(req, res) {
   try {
     const allowedEntityIds = await getAllowedEntityIds(req);
@@ -149,6 +176,140 @@ export async function firmarOrden(req, res) {
   }
 }
 
+export async function enviarOrdenInterventor(req, res) {
+  try {
+    const ordenActual = await repo.findById(req.params.id);
+    if (!ordenActual) {
+      return error(res, "Orden no encontrada", 404);
+    }
+
+    const allowedEntityIds = await getAllowedEntityIds(req);
+    if (allowedEntityIds !== null && !hasOrderAccess(ordenActual, allowedEntityIds, req?.user?.id)) {
+      return error(res, "No tienes acceso a esa orden", 403);
+    }
+
+    const entidadesIds = Array.isArray(ordenActual.entidades_ids) ? ordenActual.entidades_ids : [];
+    const interventores = await userRepo.findInterventoresByEntidades(entidadesIds);
+    if (!interventores.length) {
+      return error(res, "No hay un interventor asignado a esta entidad. Asignalo desde Usuarios.", 400);
+    }
+
+    const usecase = new EnviarOrdenInterventor(repo, logUseCase);
+    await usecase.execute(req.params.id, req.user.id);
+
+    try {
+      await Promise.all(
+        interventores.map((interventor) =>
+          crearNotificacionUseCase.execute({
+            usuario_id: interventor.id,
+            titulo: "Orden pendiente de tu firma",
+            mensaje: `Orden ${ordenActual.numero || `#${ordenActual.id}`} requiere tu autorizacion`,
+            tipo: "ORDEN",
+            url: "/ordenes"
+          })
+        )
+      );
+    } catch {
+      // Evitar bloquear la respuesta si falla la notificacion.
+    }
+
+    return success(res, {}, "Orden enviada al interventor");
+  } catch (e) {
+    return error(res, e.message);
+  }
+}
+
+export async function firmarOrdenInterventor(req, res) {
+  try {
+    const ordenActual = await repo.findById(req.params.id);
+    if (!ordenActual) {
+      return error(res, "Orden no encontrada", 404);
+    }
+
+    const allowedEntityIds = await getAllowedEntityIds(req);
+    if (allowedEntityIds !== null && !hasOrderAccess(ordenActual, allowedEntityIds, req?.user?.id)) {
+      return error(res, "No tienes acceso a esa orden", 403);
+    }
+
+    const usecase = new FirmarOrdenInterventor(repo, logUseCase);
+    await usecase.execute(req.params.id, req.body.firmaBase64, req.user.id);
+
+    try {
+      await notificarCreadorYAdmins(ordenActual, {
+        titulo: "Orden aprobada por el interventor",
+        mensaje: `Orden ${ordenActual.numero || `#${ordenActual.id}`} fue aprobada`,
+        tipo: "ORDEN",
+        url: "/ordenes"
+      });
+    } catch {
+      // Evitar bloquear la respuesta si falla la notificacion.
+    }
+
+    return success(res, {}, "Orden aprobada correctamente");
+  } catch (e) {
+    return error(res, e.message);
+  }
+}
+
+export async function rechazarOrdenInterventor(req, res) {
+  try {
+    const ordenActual = await repo.findById(req.params.id);
+    if (!ordenActual) {
+      return error(res, "Orden no encontrada", 404);
+    }
+
+    const allowedEntityIds = await getAllowedEntityIds(req);
+    if (allowedEntityIds !== null && !hasOrderAccess(ordenActual, allowedEntityIds, req?.user?.id)) {
+      return error(res, "No tienes acceso a esa orden", 403);
+    }
+
+    const usecase = new RechazarOrdenInterventor(repo, logUseCase);
+    await usecase.execute(req.params.id, req.user.id, req.body?.comentario);
+
+    try {
+      await notificarCreadorYAdmins(ordenActual, {
+        titulo: "Orden rechazada por el interventor",
+        mensaje: String(req.body?.comentario || "").trim() || `Orden ${ordenActual.numero || `#${ordenActual.id}`} fue rechazada`,
+        tipo: "ORDEN",
+        url: "/ordenes"
+      });
+    } catch {
+      // Evitar bloquear la respuesta si falla la notificacion.
+    }
+
+    return success(res, {}, "Orden rechazada");
+  } catch (e) {
+    return error(res, e.message);
+  }
+}
+
+export async function obtenerOrdenPorMantenimiento(req, res) {
+  try {
+    const mantenimientoId = Number(req.params.mantenimientoId);
+    if (!Number.isInteger(mantenimientoId) || mantenimientoId <= 0) {
+      return error(res, "Mantenimiento invalido", 400);
+    }
+
+    if (typeof repo.findByMantenimientoId !== "function") {
+      return success(res, null);
+    }
+
+    const orden = await repo.findByMantenimientoId(mantenimientoId);
+    if (!orden) {
+      return success(res, null);
+    }
+
+    const allowedEntityIds = await getAllowedEntityIds(req);
+    if (allowedEntityIds !== null && !hasOrderAccess(orden, allowedEntityIds, req?.user?.id)) {
+      return error(res, "No tienes acceso a esa orden", 403);
+    }
+
+    return success(res, orden);
+  } catch (e) {
+    return error(res, e.message);
+  }
+}
+
 export async function listar(req, res) {
   try {
     const usecase = new ListarOrden(repo);
@@ -202,6 +363,77 @@ export async function descargarPdfOrden(req, res) {
     return res.send(pdfBuffer);
   } catch (e) {
     return error(res, e.message || "No se pudo generar PDF", 400);
+  }
+}
+
+export async function obtenerDocumentoOrden(req, res) {
+  try {
+    const allowedEntityIds = await getAllowedEntityIds(req);
+    const orden = await repo.findById(req.params.id);
+
+    if (!orden) {
+      return error(res, "Orden no encontrada", 404);
+    }
+
+    if (allowedEntityIds !== null && !hasOrderAccess(orden, allowedEntityIds, req?.user?.id)) {
+      return error(res, "No tienes acceso a esa orden", 403);
+    }
+
+    const datos = await repo.findDocumentData(req.params.id);
+    if (!datos) {
+      return error(res, "No se encontro informacion del documento", 404);
+    }
+
+    return success(res, {
+      numeroOrden: datos.numero,
+      mantenimientoConsecutivo: datos.mantenimiento_id,
+      activo: {
+        id: datos.activo_id,
+        activo: datos.activo,
+        nombre: datos.activo_nombre,
+        serial: datos.serial,
+        equipo: datos.equipo,
+        marca: datos.marca,
+        modelo: datos.modelo,
+        procesador: datos.procesador,
+        ram: datos.ram,
+        tiporam: datos.tiporam,
+        tipodisco: datos.tipodisco,
+        hdd: datos.hdd,
+        os: datos.os,
+        areaprincipal: datos.areaprincipal,
+        areasecundaria: datos.areasecundaria,
+        sede: datos.sede || datos.entidad_nombre,
+        estado: datos.activo_estado
+      },
+      mantenimiento: {
+        id: datos.mantenimiento_id,
+        tipo: datos.mantenimiento_tipo,
+        estado: orden.estado,
+        tecnico: datos.tecnico_nombre,
+        fecha: datos.mantenimiento_fecha,
+        cambio_partes: datos.cambio_partes,
+        descripcion: datos.mantenimiento_descripcion
+      },
+      factura: {
+        numeroFactura: datos.numero,
+        numeroOrden: datos.numero,
+        fecha: datos.orden_fecha,
+        usuarioNombre: datos.firmante_nombre || "",
+        usuarioArea: datos.firmante_area || "",
+        usuarioCargo: datos.firmante_cargo || "",
+        usuarioFirma: datos.usuario_firma || "",
+        estadoOrden: orden.estado,
+        interventorNombre: datos.interventor_nombre || "",
+        interventorFirma: datos.interventor_firma || "",
+        comentarioInterventor: datos.comentario_interventor || ""
+      },
+      interventor_nombre: datos.interventor_nombre,
+      comentario_interventor: datos.comentario_interventor,
+      estado: orden.estado
+    });
+  } catch (e) {
+    return error(res, e.message || "No se pudo obtener el documento", 400);
   }
 }
 

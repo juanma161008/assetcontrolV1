@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useState } from "react";
 import httpClient from "../../services/httpClient";
 import { isAuthenticated } from "../../services/authService";
+import useSilentAutoRefresh from "../../hooks/useSilentAutoRefresh";
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = () =>
@@ -180,12 +181,14 @@ export default function AuditoriaPage() {
   const [searchText, setSearchText] = useState("");
   const [searchApplied, setSearchApplied] = useState("");
 
-  const fetchLogs = useCallback(async (usuario = "") => {
-    setLoading(true);
+  const fetchLogs = useCallback(async (usuario = "", { withLoading = true } = {}) => {
+    if (withLoading) setLoading(true);
 
     if (!isAuthenticated()) {
-      setLoading(false);
-      setHasData(false);
+      if (withLoading) {
+        setLoading(false);
+        setHasData(false);
+      }
       return;
     }
 
@@ -197,16 +200,20 @@ export default function AuditoriaPage() {
       setLogs(Array.isArray(data) ? data : []);
       setHasData(Array.isArray(data) && data.length > 0);
     } catch {
-      setLogs([]);
-      setHasData(false);
+      if (withLoading) {
+        setLogs([]);
+        setHasData(false);
+      }
     } finally {
-      setLoading(false);
+      if (withLoading) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     fetchLogs("");
   }, [fetchLogs]);
+
+  useSilentAutoRefresh(() => fetchLogs(searchApplied, { withLoading: false }));
 
   useEffect(() => {
     const browserWindow = globalThis.window;

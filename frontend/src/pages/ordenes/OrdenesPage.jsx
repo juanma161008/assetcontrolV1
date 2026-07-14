@@ -1,10 +1,14 @@
 ﻿import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
+import JSZip from "jszip";
 import httpClient from "../../services/httpClient";
 import { getCurrentUser, isAuthenticated } from "../../services/authService";
 import { hasPermission } from "../../utils/permissions";
 import FirmaDigital from "../../components/shared/FirmaDigital";
 import { buildMaintenanceOrderHtml } from "../../utils/emailDocuments";
+import { imageToDataUrl } from "../../utils/imageToDataUrl";
+import { renderHtmlToPdfBlob } from "../../utils/htmlToPdf";
+import useSilentAutoRefresh from "../../hooks/useSilentAutoRefresh";
 import logoM5 from "../../assets/logos/logom5.png";
 import "../../styles/OrdenesPage.css";
 
@@ -30,7 +34,57 @@ const getLastDigitGroup = (value = "") => {
   return lastMatch;
 };
 
-const buildSearchIndex = (orden = {}) => Object.values(orden || {}).join(" ").toLowerCase();
+const flattenSearchValue = (value) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (Array.isArray(value)) {
+    return value.map(flattenSearchValue).join(" ");
+  }
+  if (typeof value === "object") {
+    return Object.values(value).map(flattenSearchValue).join(" ");
+  }
+  return String(value);
+};
+
+const buildSearchIndex = (orden = {}) => flattenSearchValue(orden).toLowerCase();
+
+const ESTADO_BADGE_CLASSES = {
+  "firmada": "ordenes-estado-firmada",
+  "pendiente interventor": "ordenes-estado-pendiente-interventor",
+  "aprobada": "ordenes-estado-aprobada",
+  "rechazada por interventor": "ordenes-estado-rechazada"
+};
+
+const getEstadoBadgeClass = (estado = "") => {
+  const key = String(estado || "").trim().toLowerCase();
+  return ESTADO_BADGE_CLASSES[key] || "";
+};
+
+const MESES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+];
+
+const TIPO_MANTENIMIENTO_OPTIONS = [
+  { value: "preventivo", label: "Preventivo" },
+  { value: "correctivo", label: "Correctivo" },
+  { value: "predictivo", label: "Predictivo" },
+  { value: "calibracion", label: "Calibración" }
+];
+
+const normalizeTipoValue = (value = "") =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "")
+    .toLowerCase()
+    .trim();
+
+const getOrdenFechaParts = (orden = {}) => {
+  const fecha = orden?.fecha ? new Date(orden.fecha) : null;
+  if (!fecha || Number.isNaN(fecha.getTime())) return { mes: null, dia: null };
+  return { mes: fecha.getUTCMonth() + 1, dia: fecha.getUTCDate() };
+};
 
 const escapeCsvValue = (value) => {
   const raw = String(value ?? "");
@@ -90,20 +144,49 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
   const [searchGlobal, setSearchGlobal] = useState("");
   const [searchEntidad, setSearchEntidad] = useState("");
   const [searchActivo, setSearchActivo] = useState("");
+  const [filtroMes, setFiltroMes] = useState("");
+  const [filtroDia, setFiltroDia] = useState("");
+  const [filtroTipoMantenimiento, setFiltroTipoMantenimiento] = useState("");
+  const [searchArea, setSearchArea] = useState("");
   const [downloadingId, setDownloadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [selectedOrden, setSelectedOrden] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
   const [selectedOrdenIds, setSelectedOrdenIds] = useState([]);
   const [ordenesParaFirmar, setOrdenesParaFirmar] = useState([]);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [tempSignature, setTempSignature] = useState("");
   const [signingOrderIds, setSigningOrderIds] = useState([]);
+  const [signatureMode, setSignatureMode] = useState("firmar");
+  const [sendingInterventorId, setSendingInterventorId] = useState(null);
+  const [rejectingInterventorId, setRejectingInterventorId] = useState(null);
+  const [isZipping, setIsZipping] = useState(false);
   const deferredSearchGlobal = useDeferredValue(searchGlobal);
   const deferredSearchEntidad = useDeferredValue(searchEntidad);
   const deferredSearchActivo = useDeferredValue(searchActivo);
+  const deferredSearchArea = useDeferredValue(searchArea);
 
   const currentUser = getCurrentUser();
   const isAdmin = hasPermission(currentUser, "ADMIN_TOTAL");
+  // Chequeo directo (sin el atajo de ADMIN_TOTAL de hasPermission): esta bandera separa
+  // la pantalla/acciones del interventor de las del tecnico/admin, asi que un admin sin
+  // el permiso explicito de interventor no debe ver "Firmar autorizacion" ni "Rechazar".
+  const isInterventor = Array.isArray(currentUser?.permisos) && currentUser.permisos.includes("FIRMAR_ORDEN_INTERVENTOR");
+  const canSignOrders = useMemo(
+    () =>
+      hasPermission(currentUser, "GENERAR_ORDEN") ||
+      hasPermission(currentUser, "FIRMAR_ORDEN") ||
+      hasPermission(currentUser, "CREAR_MANTENIMIENTO"),
+    [currentUser]
+  );
+
+  const fetchOrdenesData = async () => {
+    const response = await httpClient.get("/api/ordenes");
+    const data = response.data.data || response.data || [];
+    return Array.isArray(data) ? data : [];
+  };
 
   const fetchOrdenes = async () => {
     if (!isAuthenticated()) {
@@ -112,9 +195,8 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
     }
 
     try {
-      const response = await httpClient.get("/api/ordenes");
-      const data = response.data.data || response.data || [];
-      setOrdenes(Array.isArray(data) ? data : []);
+      const data = await fetchOrdenesData();
+      setOrdenes(data);
     } catch (err) {
       if (err?.response?.status !== 401) {
         setError(err?.response?.data?.message || "Error al cargar órdenes");
@@ -125,9 +207,29 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
     }
   };
 
+  // Refresco en segundo plano: no muestra el spinner ni toca los mensajes de error/exito,
+  // para que la lista se mantenga al dia entre dispositivos sin interrumpir al usuario.
+  const refreshOrdenesSilently = async () => {
+    if (!isAuthenticated()) return;
+    try {
+      const data = await fetchOrdenesData();
+      setOrdenes(data);
+    } catch {
+      // Silencioso: un fallo de refresco en segundo plano no debe interrumpir al usuario.
+    }
+  };
+
   useEffect(() => {
     fetchOrdenes();
   }, []);
+
+  const hayAccionEnCurso =
+    showSignatureModal ||
+    signingOrderIds.length > 0 ||
+    Boolean(sendingInterventorId) ||
+    Boolean(rejectingInterventorId);
+
+  useSilentAutoRefresh(refreshOrdenesSilently, { enabled: !hayAccionEnCurso });
 
   useEffect(() => {
     if (showSignatureModal) {
@@ -149,14 +251,14 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
   };
 
   const ordenesVisibles = useMemo(() => {
-    if (isAdmin) {
+    if (isAdmin || isInterventor) {
       return ordenes;
     }
     if (!currentUser.id) {
       return ordenes;
     }
     return ordenes.filter((orden) => Number(orden.creado_por) === Number(currentUser.id));
-  }, [ordenes, currentUser.id, isAdmin]);
+  }, [ordenes, currentUser.id, isAdmin, isInterventor]);
 
   const entidadActivaNombre = String(selectedEntidadNombre ?? "").trim().toLowerCase();
   const entidadActivaIdNum = Number(selectedEntidadId);
@@ -192,22 +294,35 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
     () => ({
       globalTerm: deferredSearchGlobal.trim().toLowerCase(),
       entidadTerm: deferredSearchEntidad.trim().toLowerCase(),
-      activoTerm: deferredSearchActivo.trim().toLowerCase()
+      activoTerm: deferredSearchActivo.trim().toLowerCase(),
+      areaTerm: deferredSearchArea.trim().toLowerCase()
     }),
-    [deferredSearchGlobal, deferredSearchEntidad, deferredSearchActivo]
+    [deferredSearchGlobal, deferredSearchEntidad, deferredSearchActivo, deferredSearchArea]
   );
 
   const ordenesIndex = useMemo(() => {
-    return ordenesPorEntidadActiva.map((orden) => ({
-      orden,
-      searchIndex: buildSearchIndex(orden),
-      entidades: String(orden.entidades || "").toLowerCase(),
-      activos: String(orden.activos || "").toLowerCase()
-    }));
+    return ordenesPorEntidadActiva.map((orden) => {
+      const { mes, dia } = getOrdenFechaParts(orden);
+      return {
+        orden,
+        searchIndex: buildSearchIndex(orden),
+        entidades: String(orden.entidades || "").toLowerCase(),
+        activos: String(orden.activos || "").toLowerCase(),
+        reportes: String(orden.reportes || "").toLowerCase(),
+        ordenNumero: String(orden.numero || "").toLowerCase(),
+        tiposMantenimiento: normalizeTipoValue(orden.tipos_mantenimiento || ""),
+        areas: `${orden.areas_principales || ""} ${orden.areas_secundarias || ""}`.toLowerCase(),
+        mes,
+        dia
+      };
+    });
   }, [ordenesPorEntidadActiva]);
 
   const filteredOrdenes = useMemo(() => {
-    const { globalTerm, entidadTerm, activoTerm } = searchTerms;
+    const { globalTerm, entidadTerm, activoTerm, areaTerm } = searchTerms;
+    const mesSeleccionado = filtroMes ? Number(filtroMes) : null;
+    const diaSeleccionado = filtroDia ? Number(filtroDia) : null;
+    const tipoSeleccionado = filtroTipoMantenimiento ? normalizeTipoValue(filtroTipoMantenimiento) : "";
 
     return ordenesIndex
       .filter((item) => {
@@ -217,14 +332,29 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
         if (entidadTerm && !item.entidades.includes(entidadTerm)) {
           return false;
         }
-        if (activoTerm && !item.activos.includes(activoTerm)) {
+        if (activoTerm) {
+          const activoSearch = `${item.ordenNumero} ${item.activos} ${item.reportes}`;
+          if (!activoSearch.includes(activoTerm)) {
+            return false;
+          }
+        }
+        if (areaTerm && !item.areas.includes(areaTerm)) {
+          return false;
+        }
+        if (mesSeleccionado && item.mes !== mesSeleccionado) {
+          return false;
+        }
+        if (diaSeleccionado && item.dia !== diaSeleccionado) {
+          return false;
+        }
+        if (tipoSeleccionado && !item.tiposMantenimiento.includes(tipoSeleccionado)) {
           return false;
         }
 
         return true;
       })
       .map((item) => item.orden);
-  }, [ordenesIndex, searchTerms]);
+  }, [ordenesIndex, searchTerms, filtroMes, filtroDia, filtroTipoMantenimiento]);
 
   const selectedOrdenSet = useMemo(
     () => new Set(selectedOrdenIds.map(Number)),
@@ -242,13 +372,24 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
     [selectedOrdenes]
   );
 
+  const selectedOrdenesInterventorFirmables = useMemo(
+    () => selectedOrdenes.filter((item) => item.estado === "Pendiente Interventor"),
+    [selectedOrdenes]
+  );
+
+  const isOrdenSeleccionable = (orden) => {
+    if (canSignOrders && !orden?.firmada) return true;
+    if (isInterventor && orden?.estado === "Pendiente Interventor") return true;
+    return false;
+  };
+
   const visibleOrdenIds = useMemo(
     () =>
       filteredOrdenes
-        .filter((item) => !item.firmada)
+        .filter((item) => isOrdenSeleccionable(item))
         .map((item) => Number(item.id))
         .filter((id) => Number.isInteger(id) && id > 0),
-    [filteredOrdenes]
+    [filteredOrdenes, canSignOrders, isInterventor]
   );
 
   const allVisibleOrdenesSelected =
@@ -331,33 +472,69 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
     return true;
   };
 
-  const abrirDocumentoOrdenDesdeRespaldo = (orden, modo = "pdf") => {
+  // Reconstruye el documento desde el servidor (activo, mantenimiento, firmas) para que
+  // tecnico, admin e interventor puedan descargarlo/imprimirlo igual sin importar quien
+  // genero la orden ni desde que dispositivo. Si el servidor falla (p. ej. sin conexion),
+  // se usa como ultimo recurso el respaldo local del dispositivo que la genero.
+  const construirHtmlOrden = async (orden) => {
     const ordenId = orden.id;
-    if (!ordenId) return false;
+    if (!ordenId) return null;
 
-    const respaldo = localStorage.getItem(`orden_pdf_${ordenId}`);
-    if (!respaldo) return false;
+    let datos = null;
 
     try {
-      const parsed = JSON.parse(respaldo);
-      const numeroOrden = String(parsed.numero || orden.numero || `OT-${ordenId}`).trim();
-      const mantenimientoConsecutivo =
-        parsed.mantenimientoConsecutivo || parsed.mantenimiento.id || null;
+      const response = await httpClient.get(`/api/ordenes/${ordenId}/documento`);
+      datos = response.data.data || response.data || null;
+    } catch {
+      datos = null;
+    }
+
+    if (!datos) {
+      const respaldo = localStorage.getItem(`orden_pdf_${ordenId}`);
+      if (!respaldo) return null;
+      try {
+        const parsed = JSON.parse(respaldo);
+        datos = {
+          numeroOrden: parsed.numero || orden.numero || `MT-${ordenId}`,
+          mantenimientoConsecutivo: parsed.mantenimientoConsecutivo || parsed.mantenimiento?.id || null,
+          activo: parsed.activo || {},
+          mantenimiento: parsed.mantenimiento || {},
+          factura: parsed.factura || {}
+        };
+      } catch {
+        return null;
+      }
+    }
+
+    try {
+      const numeroOrden = String(datos.numeroOrden || orden.numero || `MT-${ordenId}`).trim();
+      let logoM5DataUrl = logoM5;
+      try {
+        logoM5DataUrl = await imageToDataUrl(logoM5);
+      } catch {
+        // Si falla la conversion, se usa la ruta original del logo.
+      }
       const html = buildMaintenanceOrderHtml({
-        activo: parsed.activo || {},
-        mantenimiento: parsed.mantenimiento || {},
-        factura: parsed.factura || {},
+        activo: datos.activo || {},
+        mantenimiento: datos.mantenimiento || {},
+        factura: datos.factura || {},
         numeroOrden,
-        mantenimientoConsecutivo,
+        mantenimientoConsecutivo: datos.mantenimientoConsecutivo,
         logos: {
-          logoM5
+          logoM5: logoM5DataUrl
         }
       });
 
-      return abrirDocumentoOrden(html, numeroOrden, modo);
+      return { html, numeroOrden };
     } catch {
-      return false;
+      return null;
     }
+  };
+
+  const abrirDocumentoOrdenDesdeRespaldo = async (orden, modo = "pdf") => {
+    const resultado = await construirHtmlOrden(orden);
+    if (!resultado) return false;
+    return abrirDocumentoOrden(resultado.html, resultado.numeroOrden, modo);
   };
 
   const descargarOrden = async (orden) => {
@@ -372,7 +549,7 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
     setDownloadingId(ordenId);
 
     try {
-      if (abrirDocumentoOrdenDesdeRespaldo(orden, "pdf")) {
+      if (await abrirDocumentoOrdenDesdeRespaldo(orden, "pdf")) {
         return;
       }
 
@@ -401,12 +578,12 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
         const lines = [
           "RESUMEN DE ORDEN",
           "",
-          `Numero: ${parsed.numero || numeroOrden || ordenId}`,
+          `Orden: ${parsed.numero || numeroOrden || ordenId}`,
           `Activo: ${parsed.activo.activo || parsed.activo.nombre || "-"}`,
           `Técnico: ${parsed.mantenimiento.tecnico || "-"}`,
           `Tipo: ${parsed.mantenimiento.tipo || "-"}`,
-          `Descripcion: ${parsed.mantenimiento.descripcion || "-"}`,
-          `Factura: ${parsed.factura.numeroFactura || "-"}`
+          `Observaciones: ${parsed.mantenimiento.descripcion || "-"}`,
+          `Orden: ${parsed.factura.numeroOrden || parsed.factura.numeroFactura || "-"}`
         ].join("\n");
 
         const blob = new Blob([lines], { type: "text/plain;charset=utf-8" });
@@ -437,7 +614,7 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
     setDownloadingId(ordenId);
 
     try {
-      if (abrirDocumentoOrdenDesdeRespaldo(orden, "print")) {
+      if (await abrirDocumentoOrdenDesdeRespaldo(orden, "print")) {
         return;
       }
 
@@ -495,14 +672,6 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
     }
   };
 
-  const canSignOrders = useMemo(
-    () =>
-      hasPermission(currentUser, "GENERAR_ORDEN") ||
-      hasPermission(currentUser, "FIRMAR_ORDEN") ||
-      hasPermission(currentUser, "CREAR_MANTENIMIENTO"),
-    [currentUser]
-  );
-
   const openSignatureModal = (orden) => {
     if (!orden?.id || orden?.firmada || !canSignOrders) {
       return;
@@ -510,6 +679,7 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
 
     setError("");
     setSuccess("");
+    setSignatureMode("firmar");
     const selectedFirmable = selectedOrdenesFirmables.length > 0 ? selectedOrdenesFirmables : [orden];
     const uniqueTargets = Array.from(
       new Map(
@@ -637,9 +807,192 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
     }
   };
 
+  const openInterventorSignatureModal = (orden) => {
+    if (!orden?.id) return;
+
+    setError("");
+    setSuccess("");
+    setSignatureMode("interventor");
+    const selectedFirmables =
+      selectedOrdenesInterventorFirmables.length > 0 ? selectedOrdenesInterventorFirmables : [orden];
+    const uniqueTargets = Array.from(
+      new Map(
+        selectedFirmables
+          .filter((item) => item?.id && item?.estado === "Pendiente Interventor")
+          .map((item) => [String(item.id), item])
+      ).values()
+    );
+    setOrdenesParaFirmar(uniqueTargets.length > 0 ? uniqueTargets : [orden]);
+    setTempSignature("");
+    setShowSignatureModal(true);
+  };
+
+  const firmarComoInterventor = async () => {
+    const ordenesObjetivo = Array.from(
+      new Map(
+        (Array.isArray(ordenesParaFirmar) ? ordenesParaFirmar : [])
+          .filter((item) => item?.id && item?.estado === "Pendiente Interventor")
+          .map((item) => [String(item.id), item])
+      ).values()
+    );
+
+    if (ordenesObjetivo.length === 0 || !tempSignature || signingOrderIds.length > 0) {
+      return;
+    }
+
+    const targetIds = ordenesObjetivo
+      .map((item) => Number(item.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+    setError("");
+    setSuccess("");
+    setSigningOrderIds(targetIds);
+
+    try {
+      const firmaReducida = await reducirFirma(tempSignature);
+      const firmaBase64 = firmaReducida || tempSignature;
+      const resultados = [];
+
+      for (const ordenActual of ordenesObjetivo) {
+        const ordenId = Number(ordenActual.id);
+        const numeroOrden = ordenActual.numero || `#${ordenId}`;
+        try {
+          await httpClient.post(`/api/ordenes/${ordenId}/firmar-interventor`, { firmaBase64 });
+          resultados.push({ ok: true, id: ordenId, numero: numeroOrden });
+        } catch (err) {
+          resultados.push({
+            ok: false,
+            id: ordenId,
+            numero: numeroOrden,
+            message: err?.response?.data?.message || err?.response?.data?.error || "No se pudo firmar la orden"
+          });
+        }
+      }
+
+      const signedIds = resultados.filter((item) => item.ok).map((item) => Number(item.id));
+      const failed = resultados.filter((item) => !item.ok);
+
+      if (signedIds.length > 0) {
+        setOrdenes((prev) =>
+          Array.isArray(prev)
+            ? prev.map((item) => (signedIds.includes(Number(item.id)) ? { ...item, estado: "Aprobada" } : item))
+            : prev
+        );
+        setSelectedOrden((prev) =>
+          prev && signedIds.includes(Number(prev.id)) ? { ...prev, estado: "Aprobada" } : prev
+        );
+        setSelectedOrdenIds((prev) => prev.filter((id) => !signedIds.includes(Number(id))));
+      }
+
+      setShowSignatureModal(false);
+      setOrdenesParaFirmar([]);
+      setTempSignature("");
+
+      if (failed.length === 0) {
+        setSuccess(
+          resultados.length === 1
+            ? `Orden ${resultados[0].numero} aprobada correctamente`
+            : `${resultados.length} órdenes aprobadas correctamente`
+        );
+      } else {
+        const resumenFallos = failed
+          .slice(0, 3)
+          .map((item) => `Orden ${item.numero}: ${item.message}`)
+          .join(" | ");
+        if (signedIds.length > 0) {
+          setSuccess(`${signedIds.length} órdenes aprobadas correctamente`);
+        }
+        setError(
+          signedIds.length > 0
+            ? `Aprobado parcial: ${signedIds.length}/${resultados.length}. ${resumenFallos}`
+            : `No se pudo aprobar ninguna orden. ${resumenFallos}`
+        );
+      }
+
+      await fetchOrdenes();
+    } catch (err) {
+      setError(
+        err?.response?.data?.message || err?.response?.data?.error || "No se pudo firmar la orden como interventor"
+      );
+    } finally {
+      setSigningOrderIds([]);
+    }
+  };
+
+  const enviarAInterventor = async (orden) => {
+    if (!orden?.id || sendingInterventorId) return;
+
+    const confirmado = globalThis.confirm(
+      `¿Enviar la orden ${orden.numero || `#${orden.id}`} al interventor de la entidad para su autorización?`
+    );
+    if (!confirmado) return;
+
+    setError("");
+    setSuccess("");
+    setSendingInterventorId(orden.id);
+
+    try {
+      await httpClient.post(`/api/ordenes/${orden.id}/enviar-interventor`);
+      setOrdenes((prev) =>
+        Array.isArray(prev)
+          ? prev.map((item) =>
+              Number(item.id) === Number(orden.id) ? { ...item, estado: "Pendiente Interventor" } : item
+            )
+          : prev
+      );
+      setSelectedOrden((prev) =>
+        prev && Number(prev.id) === Number(orden.id) ? { ...prev, estado: "Pendiente Interventor" } : prev
+      );
+      setSuccess(`Orden ${orden.numero || `#${orden.id}`} enviada al interventor`);
+      await fetchOrdenes();
+    } catch (err) {
+      setError(
+        err?.response?.data?.message || err?.response?.data?.error || "No se pudo enviar la orden al interventor"
+      );
+    } finally {
+      setSendingInterventorId(null);
+    }
+  };
+
+  const rechazarComoInterventor = async (orden) => {
+    if (!orden?.id || rejectingInterventorId) return;
+
+    const comentario = globalThis.prompt("Motivo del rechazo (obligatorio):", "");
+    if (comentario === null) return;
+
+    const comentarioLimpio = String(comentario || "").trim();
+    if (!comentarioLimpio) {
+      setError("El comentario de rechazo es obligatorio.");
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setRejectingInterventorId(orden.id);
+
+    try {
+      await httpClient.post(`/api/ordenes/${orden.id}/rechazar-interventor`, { comentario: comentarioLimpio });
+      setOrdenes((prev) =>
+        Array.isArray(prev)
+          ? prev.map((item) =>
+              Number(item.id) === Number(orden.id)
+                ? { ...item, estado: "Rechazada por Interventor", comentario_interventor: comentarioLimpio }
+                : item
+            )
+          : prev
+      );
+      setSuccess(`Orden ${orden.numero || `#${orden.id}`} rechazada`);
+      await fetchOrdenes();
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.response?.data?.error || "No se pudo rechazar la orden");
+    } finally {
+      setRejectingInterventorId(null);
+    }
+  };
+
   const toggleOrdenSelection = (ordenId, event) => {
     if (event?.stopPropagation) event.stopPropagation();
-    if (!canSignOrders) return;
+    if (!canSignOrders && !isInterventor) return;
 
     const normalizedId = Number(ordenId);
     if (!Number.isInteger(normalizedId) || normalizedId <= 0) return;
@@ -654,10 +1007,10 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
   };
 
   const toggleSelectAllVisibleOrdenes = () => {
-    if (!canSignOrders) return;
+    if (!canSignOrders && !isInterventor) return;
 
     const visibleSelectableIds = filteredOrdenes
-      .filter((item) => !item.firmada)
+      .filter((item) => isOrdenSeleccionable(item))
       .map((item) => Number(item.id))
       .filter((id) => Number.isInteger(id) && id > 0);
 
@@ -738,6 +1091,74 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
     setSuccess(`Exportadas ${rows.length} órdenes a CSV.`);
   };
 
+  // Descarga un .zip con el PDF de cada orden firmada (o de las seleccionadas, si hay
+  // alguna marcada), respetando los filtros aplicados. Disponible para tecnico, admin
+  // e interventor por igual: cada PDF se genera en el servidor para esa orden.
+  const descargarZipFirmadas = async () => {
+    if (isZipping) return;
+
+    const origen = selectedOrdenIds.length > 0
+      ? filteredOrdenes.filter((item) => selectedOrdenSet.has(Number(item.id)) && item.firmada)
+      : filteredOrdenes.filter((item) => item.firmada);
+
+    if (!origen.length) {
+      setError("No hay órdenes firmadas para exportar con el filtro actual.");
+      setSuccess("");
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setIsZipping(true);
+
+    try {
+      const zip = new JSZip();
+      const fallidas = [];
+      let generadas = 0;
+
+      for (const orden of origen) {
+        try {
+          const resultado = await construirHtmlOrden(orden);
+          if (!resultado) {
+            throw new Error("Sin datos de documento");
+          }
+          const pdfBlob = await renderHtmlToPdfBlob(resultado.html);
+          const nombreArchivo = `Orden-${orden.numero || orden.id}.pdf`.replace(/[^a-zA-Z0-9-_.]/g, "-");
+          zip.file(nombreArchivo, pdfBlob);
+          generadas += 1;
+        } catch {
+          fallidas.push(orden.numero || `#${orden.id}`);
+        }
+      }
+
+      if (generadas === 0) {
+        setError("No se pudo generar ningún PDF para el ZIP.");
+        return;
+      }
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = globalThis.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.setAttribute("download", `ordenes-firmadas-${dateStamp}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      globalThis.URL.revokeObjectURL(url);
+
+      setSuccess(
+        fallidas.length > 0
+          ? `ZIP generado con ${generadas} orden(es). No se pudieron incluir: ${fallidas.slice(0, 3).join(", ")}${fallidas.length > 3 ? "…" : ""}.`
+          : `ZIP generado con ${generadas} orden(es) firmada(s).`
+      );
+    } catch {
+      setError("No se pudo generar el ZIP de órdenes.");
+    } finally {
+      setIsZipping(false);
+    }
+  };
+
   const selectedOrdenBackup = useMemo(() => {
     if (!selectedOrden?.id) return null;
     try {
@@ -747,6 +1168,52 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
       return null;
     }
   }, [selectedOrden]);
+
+  // Genera la vista previa del documento (mismo HTML que se usa para PDF/impresión)
+  // cada vez que se abre el modal de detalle de una orden, y libera el objeto URL al cerrar.
+  useEffect(() => {
+    if (!selectedOrden?.id) {
+      setPreviewUrl("");
+      setPreviewError("");
+      return undefined;
+    }
+
+    let cancelado = false;
+    let objectUrl = "";
+
+    setPreviewUrl("");
+    setPreviewError("");
+    setPreviewLoading(true);
+
+    construirHtmlOrden(selectedOrden)
+      .then((resultado) => {
+        if (cancelado) return;
+        if (!resultado?.html) {
+          setPreviewError("No se pudo generar la vista previa del PDF de esta orden.");
+          return;
+        }
+        objectUrl = createHtmlPreviewUrl(resultado.html);
+        setPreviewUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelado) {
+          setPreviewError("No se pudo generar la vista previa del PDF de esta orden.");
+        }
+      })
+      .finally(() => {
+        if (!cancelado) {
+          setPreviewLoading(false);
+        }
+      });
+
+    return () => {
+      cancelado = true;
+      if (objectUrl) {
+        globalThis.URL.revokeObjectURL(objectUrl);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOrden?.id]);
 
   if (loading) {
     return (
@@ -796,6 +1263,19 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
         </div>
       )}
 
+      {isInterventor && selectedOrdenesInterventorFirmables.length > 0 && (
+        <div className="ordenes-bulk-actions">
+          <button
+            type="button"
+            className="btn-action ordenes-bulk-sign-button"
+            onClick={() => openInterventorSignatureModal(selectedOrdenesInterventorFirmables[0])}
+            disabled={signingOrderIds.length > 0}
+          >
+            Firmar autorización seleccionadas ({selectedOrdenesInterventorFirmables.length})
+          </button>
+        </div>
+      )}
+
       <div className="ordenes-filters">
         <input
           type="text"
@@ -813,11 +1293,51 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
         />
         <input
           type="text"
-          placeholder="Buscar por activo / reporte..."
+          placeholder="Buscar por activo / orden..."
           value={searchActivo}
           onChange={(event) => setSearchActivo(event.target.value)}
           className="search-input"
         />
+        <input
+          type="text"
+          placeholder="Buscar por área principal/secundaria..."
+          value={searchArea}
+          onChange={(event) => setSearchArea(event.target.value)}
+          className="search-input"
+        />
+        <select
+          value={filtroMes}
+          onChange={(event) => setFiltroMes(event.target.value)}
+          className="search-input"
+          aria-label="Filtrar por mes"
+        >
+          <option value="">Todos los meses</option>
+          {MESES.map((mes, index) => (
+            <option key={mes} value={index + 1}>{mes}</option>
+          ))}
+        </select>
+        <select
+          value={filtroDia}
+          onChange={(event) => setFiltroDia(event.target.value)}
+          className="search-input"
+          aria-label="Filtrar por día"
+        >
+          <option value="">Todos los días</option>
+          {Array.from({ length: 31 }, (_, index) => index + 1).map((dia) => (
+            <option key={dia} value={dia}>{dia}</option>
+          ))}
+        </select>
+        <select
+          value={filtroTipoMantenimiento}
+          onChange={(event) => setFiltroTipoMantenimiento(event.target.value)}
+          className="search-input"
+          aria-label="Filtrar por tipo de mantenimiento"
+        >
+          <option value="">Todos los tipos</option>
+          {TIPO_MANTENIMIENTO_OPTIONS.map((opcion) => (
+            <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
+          ))}
+        </select>
         <button
           type="button"
           className="btn-action ordenes-export-button"
@@ -826,6 +1346,15 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
           title="Exportar órdenes filtradas a CSV"
         >
           Exportar CSV ({filteredOrdenes.length})
+        </button>
+        <button
+          type="button"
+          className="btn-action ordenes-export-button"
+          onClick={descargarZipFirmadas}
+          disabled={isZipping || filteredOrdenes.filter((item) => item.firmada).length === 0}
+          title="Descargar ZIP con el PDF de las órdenes firmadas (o de las seleccionadas)"
+        >
+          {isZipping ? "Generando ZIP..." : "Descargar ZIP firmadas"}
         </button>
       </div>
 
@@ -838,7 +1367,7 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
           <table className="ordenes-table">
           <thead>
             <tr>
-              {canSignOrders && (
+              {(canSignOrders || isInterventor) && (
                 <th className="ordenes-select-header">
                   <input
                     type="checkbox"
@@ -865,13 +1394,13 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
           <tbody>
             {filteredOrdenes.map((orden) => (
               <tr key={orden.id} className={selectedOrdenSet.has(Number(orden.id)) ? "ordenes-row-selected" : ""}>
-                {canSignOrders && (
+                {(canSignOrders || isInterventor) && (
                   <td className="ordenes-select-cell">
                     <input
                       type="checkbox"
                       checked={selectedOrdenSet.has(Number(orden.id))}
                       onChange={(event) => toggleOrdenSelection(orden.id, event)}
-                      disabled={orden.firmada || signingOrderSet.has(Number(orden.id))}
+                      disabled={!isOrdenSeleccionable(orden) || signingOrderSet.has(Number(orden.id))}
                       aria-label={`Seleccionar orden ${orden.numero || `#${orden.id}`}`}
                     />
                   </td>
@@ -879,7 +1408,11 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
                 <td>{obtenerConsecutivoOrden(orden.id)}</td>
                 <td>{orden.id}</td>
                 <td>{orden.numero || "-"}</td>
-                <td>{orden.estado || "-"}</td>
+                <td>
+                  <span className={`ordenes-estado-badge ${getEstadoBadgeClass(orden.estado)}`}>
+                    {orden.estado || "-"}
+                  </span>
+                </td>
                 <td>{orden.firmada ? "SI" : "NO"}</td>
                 <td>{formatFecha(orden.fecha)}</td>
                 <td>{orden.activos || "-"}</td>
@@ -903,6 +1436,36 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
                     >
                       Firmar
                     </button>
+                  )}
+                  {canSignOrders && (orden.estado === "Firmada" || orden.estado === "Rechazada por Interventor") && (
+                    <button
+                      className="btn-action"
+                      disabled={sendingInterventorId === orden.id}
+                      onClick={() => enviarAInterventor(orden)}
+                      title="Enviar a interventor"
+                    >
+                      {sendingInterventorId === orden.id ? "..." : "Enviar a interventor"}
+                    </button>
+                  )}
+                  {isInterventor && orden.estado === "Pendiente Interventor" && (
+                    <>
+                      <button
+                        className="btn-action"
+                        disabled={signingOrderIds.length > 0}
+                        onClick={() => openInterventorSignatureModal(orden)}
+                        title="Firmar autorización"
+                      >
+                        Firmar autorización
+                      </button>
+                      <button
+                        className="btn-action"
+                        disabled={rejectingInterventorId === orden.id}
+                        onClick={() => rechazarComoInterventor(orden)}
+                        title="Rechazar orden"
+                      >
+                        {rejectingInterventorId === orden.id ? "..." : "Rechazar"}
+                      </button>
+                    </>
                   )}
                   <button
                     className="btn-action"
@@ -955,23 +1518,50 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
         >
           <div className="ordenes-detail-card" onClick={(event) => event.stopPropagation()}>
             <h3 id="orden-detail-title">Detalle de orden {selectedOrden.numero || `#${selectedOrden.id}`}</h3>
+            <div className="ordenes-detail-preview">
+              <h4>Vista previa del PDF</h4>
+              {previewLoading && (
+                <p className="ordenes-detail-preview-status">Generando vista previa...</p>
+              )}
+              {!previewLoading && previewError && (
+                <p className="ordenes-detail-preview-status">{previewError}</p>
+              )}
+              {!previewLoading && !previewError && previewUrl && (
+                <iframe
+                  src={previewUrl}
+                  title={`Vista previa PDF orden ${selectedOrden.numero || selectedOrden.id}`}
+                  className="ordenes-detail-preview-frame"
+                />
+              )}
+            </div>
             <div className="ordenes-detail-grid">
               <p><strong>Consecutivo:</strong> {obtenerConsecutivoOrden(selectedOrden.id)}</p>
-              <p><strong>Estado:</strong> {selectedOrden.estado || "-"}</p>
+              <p>
+                <strong>Estado:</strong>{" "}
+                <span className={`ordenes-estado-badge ${getEstadoBadgeClass(selectedOrden.estado)}`}>
+                  {selectedOrden.estado || "-"}
+                </span>
+              </p>
               <p><strong>Firmada:</strong> {selectedOrden.firmada ? "SI" : "NO"}</p>
               <p><strong>Fecha:</strong> {formatFecha(selectedOrden.fecha)}</p>
               <p><strong>Activos:</strong> {selectedOrden.activos || "-"}</p>
               <p><strong>Entidades:</strong> {selectedOrden.entidades || "-"}</p>
               <p><strong>Creador:</strong> {selectedOrden.creador_nombre || selectedOrden.creado_por || "-"}</p>
               <p><strong>Mantenimientos:</strong> {selectedOrden.total_mantenimientos ?? 0}</p>
+              {selectedOrden.interventor_nombre && (
+                <p><strong>Interventor:</strong> {selectedOrden.interventor_nombre}</p>
+              )}
+              {selectedOrden.comentario_interventor && (
+                <p><strong>Comentario del interventor:</strong> {selectedOrden.comentario_interventor}</p>
+              )}
             </div>
             <div className="ordenes-detail-block">
               <h4>Cambio de partes</h4>
               <p>{selectedOrdenBackup?.mantenimiento?.cambio_partes || selectedOrdenBackup?.mantenimiento?.cambioPartes || "Sin dato registrado en la orden."}</p>
             </div>
             <div className="ordenes-detail-block">
-              <h4>Trabajo realizado</h4>
-              <p>{selectedOrdenBackup?.mantenimiento?.descripcion || "Sin descripción registrada."}</p>
+              <h4>Observaciones</h4>
+              <p>{selectedOrdenBackup?.mantenimiento?.descripcion || "Sin observaciones registradas."}</p>
             </div>
             <div className="ordenes-detail-actions">
               <button className="btn-action" onClick={() => descargarOrden(selectedOrden)}>
@@ -984,6 +1574,33 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
                 <button className="btn-action" onClick={() => openSignatureModal(selectedOrden)} disabled={signingOrderIds.length > 0}>
                   Firmar
                 </button>
+              )}
+              {canSignOrders && (selectedOrden.estado === "Firmada" || selectedOrden.estado === "Rechazada por Interventor") && (
+                <button
+                  className="btn-action"
+                  onClick={() => enviarAInterventor(selectedOrden)}
+                  disabled={sendingInterventorId === selectedOrden.id}
+                >
+                  {sendingInterventorId === selectedOrden.id ? "..." : "Enviar a interventor"}
+                </button>
+              )}
+              {isInterventor && selectedOrden.estado === "Pendiente Interventor" && (
+                <>
+                  <button
+                    className="btn-action"
+                    onClick={() => openInterventorSignatureModal(selectedOrden)}
+                    disabled={signingOrderIds.length > 0}
+                  >
+                    Firmar autorización
+                  </button>
+                  <button
+                    className="btn-action"
+                    onClick={() => rechazarComoInterventor(selectedOrden)}
+                    disabled={rejectingInterventorId === selectedOrden.id}
+                  >
+                    {rejectingInterventorId === selectedOrden.id ? "..." : "Rechazar"}
+                  </button>
+                </>
               )}
               <button className="btn-action" onClick={() => setSelectedOrden(null)}>
                 Cerrar
@@ -1013,9 +1630,13 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
           <div className="ordenes-sign-modal-card" role="dialog" aria-modal="true" aria-labelledby="orden-sign-title">
             <div className="ordenes-sign-modal-header">
               <h2 id="orden-sign-title">
-                {ordenesParaFirmar.length > 1
-                  ? `Firmar ${ordenesParaFirmar.length} órdenes seleccionadas`
-                  : `Firmar orden ${ordenesParaFirmar[0].numero || `#${ordenesParaFirmar[0].id}`}`}
+                {signatureMode === "interventor"
+                  ? ordenesParaFirmar.length > 1
+                    ? `Firmar autorización de ${ordenesParaFirmar.length} órdenes seleccionadas`
+                    : `Firmar autorización de la orden ${ordenesParaFirmar[0].numero || `#${ordenesParaFirmar[0].id}`}`
+                  : ordenesParaFirmar.length > 1
+                    ? `Firmar ${ordenesParaFirmar.length} órdenes seleccionadas`
+                    : `Firmar orden ${ordenesParaFirmar[0].numero || `#${ordenesParaFirmar[0].id}`}`}
               </h2>
               <button
                 className="ordenes-sign-close-btn"
@@ -1029,8 +1650,9 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
             </div>
             <div className="ordenes-sign-modal-body">
               <p className="ordenes-sign-caption">
-                Dibuja tu firma para registrar la aprobación de{" "}
-                {ordenesParaFirmar.length > 1 ? "las órdenes seleccionadas" : "esta orden"}.
+                {signatureMode === "interventor"
+                  ? `Dibuja tu firma para autorizar como interventor de la entidad ${ordenesParaFirmar.length > 1 ? "las órdenes seleccionadas" : "esta orden"}.`
+                  : `Dibuja tu firma para registrar la aprobación de ${ordenesParaFirmar.length > 1 ? "las órdenes seleccionadas" : "esta orden"}.`}
               </p>
               {ordenesParaFirmar.length > 1 && (
                 <div className="ordenes-sign-summary">
@@ -1056,7 +1678,7 @@ export default function OrdenesPage({ selectedEntidadId, selectedEntidadNombre }
             <div className="ordenes-sign-modal-footer">
               <button
                 className="ordenes-sign-confirm-btn"
-                onClick={firmarOrdenSeleccionada}
+                onClick={signatureMode === "interventor" ? firmarComoInterventor : firmarOrdenSeleccionada}
                 type="button"
                 disabled={!tempSignature || signingOrderIds.length > 0}
               >

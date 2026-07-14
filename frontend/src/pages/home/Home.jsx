@@ -9,6 +9,7 @@ import logoAsset from "../../assets/logos/logo-assetcontrol.png";
 import { calculateAssetKpis, calculateLifecycle } from "../../utils/assetLifecycle";
 import { hasPermission } from "../../utils/permissions";
 import useAnimatedPresence from "../../hooks/useAnimatedPresence";
+import useSilentAutoRefresh from "../../hooks/useSilentAutoRefresh";
 
 const DEFAULT_STATS = {
   total: 0,
@@ -140,6 +141,11 @@ export default function Home({ selectedEntidadId, selectedEntidadNombre }) {
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
   const isAdmin = hasPermission(currentUser, "ADMIN_TOTAL");
+  // Chequeo directo (sin el atajo de ADMIN_TOTAL de hasPermission): solo debe activarse
+  // para quien realmente tiene el permiso de interventor asignado.
+  const isInterventor = Array.isArray(currentUser?.permisos) && currentUser.permisos.includes("FIRMAR_ORDEN_INTERVENTOR");
+  const [ordenesPendientesInterventor, setOrdenesPendientesInterventor] = useState([]);
+  const [isLoadingOrdenesInterventor, setIsLoadingOrdenesInterventor] = useState(false);
   const entidadActivaId = String(selectedEntidadId ?? "").trim();
   const [stats, setStats] = useState(DEFAULT_STATS);
   const [dashboardActivos, setDashboardActivos] = useState([]);
@@ -258,25 +264,35 @@ export default function Home({ selectedEntidadId, selectedEntidadNombre }) {
     }
 
     try {
-      const activosResponse = await httpClient.get("/api/activos");
-      const activos = activosResponse.data.data || activosResponse.data || [];
+      let activos = [];
+      try {
+        const activosResponse = await httpClient.get("/api/activos");
+        activos = activosResponse.data.data || activosResponse.data || [];
+      } catch (activosError) {
+        if (activosError.response?.status === 401) {
+          throw new Error("Sesion expirada. Por favor, inicia sesion nuevamente.");
+        }
+        if (activosError.response?.status !== 403) {
+          throw activosError;
+        }
+      }
 
       let mantenimientos = [];
       try {
         const mantenimientosResponse = await httpClient.get("/api/mantenimientos");
         mantenimientos = mantenimientosResponse.data.data || mantenimientosResponse.data || [];
       } catch (mantenimientosError) {
-        if (mantenimientosError.response.status === 401) {
+        if (mantenimientosError.response?.status === 401) {
           throw new Error("Sesion expirada. Por favor, inicia sesion nuevamente.");
         }
-        if (mantenimientosError.response.status !== 403) {
+        if (mantenimientosError.response?.status !== 403) {
           throw mantenimientosError;
         }
       }
 
       return { activos, mantenimientos };
     } catch (loadError) {
-      if (loadError.response.status === 401) {
+      if (loadError.response?.status === 401) {
         throw new Error("Sesion expirada. Por favor, inicia sesion nuevamente.");
       }
       throw new Error("Error al cargar datos del servidor");
@@ -386,6 +402,33 @@ export default function Home({ selectedEntidadId, selectedEntidadNombre }) {
   useEffect(() => {
     cargarEstadisticas();
   }, [cargarEstadisticas]);
+
+  const cargarOrdenesPendientesInterventor = useCallback(async () => {
+    if (!isInterventor || !isAuthenticated()) {
+      setOrdenesPendientesInterventor([]);
+      return;
+    }
+
+    setIsLoadingOrdenesInterventor(true);
+    try {
+      const response = await httpClient.get("/api/ordenes");
+      const data = response.data.data || response.data || [];
+      const pendientes = (Array.isArray(data) ? data : []).filter(
+        (orden) => orden.estado === "Pendiente Interventor"
+      );
+      setOrdenesPendientesInterventor(pendientes);
+    } catch {
+      setOrdenesPendientesInterventor([]);
+    } finally {
+      setIsLoadingOrdenesInterventor(false);
+    }
+  }, [isInterventor]);
+
+  useEffect(() => {
+    cargarOrdenesPendientesInterventor();
+  }, [cargarOrdenesPendientesInterventor]);
+
+  useSilentAutoRefresh(cargarOrdenesPendientesInterventor, { enabled: isInterventor });
 
   const weeklyHeader = useMemo(() => {
     const { start, end } = getCurrentWeekRange();
@@ -772,6 +815,34 @@ export default function Home({ selectedEntidadId, selectedEntidadNombre }) {
           seguir mantenimientos y tener la informacion centralizada.
         </p>
       </div>
+
+      {isInterventor && (
+        <div className="dashboard-section">
+          <h2 className="home-title">Órdenes pendientes de tu firma</h2>
+          {isLoadingOrdenesInterventor ? (
+            <div className="loading-message">
+              <div className="spinner"></div>
+              <p>Cargando órdenes...</p>
+            </div>
+          ) : ordenesPendientesInterventor.length === 0 ? (
+            <p>No tienes órdenes pendientes de autorización por ahora.</p>
+          ) : (
+            <div className="summary-grid compact-grid">
+              {ordenesPendientesInterventor.map((orden) => (
+                <div className="summary-card" key={orden.id}>
+                  <div className="summary-content">
+                    <div className="summary-label">{orden.numero || `Orden #${orden.id}`}</div>
+                    <div className="summary-value">{orden.entidades || "-"}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <button type="button" className="mode-btn active" onClick={() => navigate("/ordenes")}>
+            Ir a Órdenes de trabajo
+          </button>
+        </div>
+      )}
 
       <div className="dashboard-section">
         <h2 className="home-title">Dashboard de Activos</h2>

@@ -13,6 +13,28 @@ export default class EntidadPgRepository {
   constructor() {
     this.columnsCache = null;
     this.entityAreasReady = false;
+    this.tiposEquiposColumnReady = false;
+  }
+
+  async ensureTiposEquiposColumn() {
+    if (this.tiposEquiposColumnReady) {
+      return;
+    }
+
+    if (process.env.NODE_ENV === "test") {
+      this.tiposEquiposColumnReady = true;
+      return;
+    }
+
+    try {
+      await pool.query(
+        `ALTER TABLE entidades
+         ADD COLUMN IF NOT EXISTS tipos_equipos_permitidos JSONB DEFAULT '[]'::jsonb`
+      );
+      this.tiposEquiposColumnReady = true;
+    } catch {
+      this.tiposEquiposColumnReady = false;
+    }
   }
 
   async getEntidadesColumns() {
@@ -45,11 +67,17 @@ export default class EntidadPgRepository {
   }
 
   normalizePayload(data = {}) {
+    const tipos = data.tipos_equipos_permitidos;
+    const tiposNormalizados = Array.isArray(tipos)
+      ? [...new Set(tipos.map(t => String(t || "").trim()).filter(Boolean))]
+      : [];
+
     return {
       nombre: normalizeText(data.nombre),
       nit: normalizeText(data.nit),
       tipo: normalizeText(data.tipo),
-      direccion: normalizeText(data.direccion)
+      direccion: normalizeText(data.direccion),
+      tipos_equipos_permitidos: tiposNormalizados
     };
   }
 
@@ -57,7 +85,7 @@ export default class EntidadPgRepository {
     const { rows } = await pool.query(
       "SELECT * FROM entidades ORDER BY id DESC"
     );
-    return rows;
+    return Array.isArray(rows) ? rows.map(row => this.normalizeRow(row)) : rows;
   }
 
   async findById(id) {
@@ -65,7 +93,7 @@ export default class EntidadPgRepository {
       "SELECT * FROM entidades WHERE id=$1",
       [id]
     );
-    return rows[0];
+    return rows[0] ? this.normalizeRow(rows[0]) : rows[0];
   }
 
   async findByNombreNormalized(nombre) {
@@ -74,44 +102,56 @@ export default class EntidadPgRepository {
       "SELECT * FROM entidades WHERE UPPER(TRIM(nombre)) = $1 LIMIT 1",
       [nombreNormalizado]
     );
-    return rows[0];
+    return rows[0] ? this.normalizeRow(rows[0]) : rows[0];
   }
 
   async create(data) {
+    await this.ensureTiposEquiposColumn();
     const payload = this.normalizePayload(data);
 
     const availableColumns = await this.getEntidadesColumns();
-    const columns = DEFAULT_ENTITY_COLUMNS.filter((column) => availableColumns.includes(column));
+    const columnsToUse = [...DEFAULT_ENTITY_COLUMNS, "tipos_equipos_permitidos"]
+      .filter((column) => availableColumns.includes(column));
 
-    if (!columns.includes("nombre") || !columns.includes("tipo")) {
+    if (!columnsToUse.includes("nombre") || !columnsToUse.includes("tipo")) {
       throw new Error("La tabla entidades no tiene las columnas requeridas");
     }
 
-    const values = columns.map((column) => payload[column]);
-    const placeholders = columns.map((_, idx) => `$${idx + 1}`).join(",");
+    const values = columnsToUse.map((column) => {
+      if (column === "tipos_equipos_permitidos") {
+        return JSON.stringify(payload[column]);
+      }
+      return payload[column];
+    });
+    const placeholders = columnsToUse.map((_, idx) => `$${idx + 1}`).join(",");
 
     const { rows } = await pool.query(
       `INSERT INTO entidades 
-       (${columns.join(", ")})
+       (${columnsToUse.join(", ")})
        VALUES (${placeholders})
        RETURNING *`,
       values
     );
 
-    return rows[0];
+    return rows[0] ? this.normalizeRow(rows[0]) : rows[0];
   }
 
   async update(id, data = {}) {
+    await this.ensureTiposEquiposColumn();
     const payload = this.normalizePayload(data);
     const availableColumns = await this.getEntidadesColumns();
-    const allowedColumns = DEFAULT_ENTITY_COLUMNS.filter((column) => availableColumns.includes(column));
+    const allowedColumns = [...DEFAULT_ENTITY_COLUMNS, "tipos_equipos_permitidos"]
+      .filter((column) => availableColumns.includes(column));
     const fields = [];
     const values = [];
 
     for (const column of allowedColumns) {
       if (payload[column] === undefined) continue;
+      const valueToAdd = column === "tipos_equipos_permitidos" 
+        ? JSON.stringify(payload[column])
+        : payload[column];
       fields.push(`${column}=$${values.length + 1}`);
-      values.push(payload[column]);
+      values.push(valueToAdd);
     }
 
     if (!fields.length) {
@@ -125,7 +165,7 @@ export default class EntidadPgRepository {
       values
     );
 
-    return rows[0];
+    return rows[0] ? this.normalizeRow(rows[0]) : rows[0];
   }
 
   async delete(id) {
@@ -142,6 +182,34 @@ export default class EntidadPgRepository {
       }
     });
     return [...unique];
+  }
+
+  normalizeRow(row) {
+    if (!row || typeof row !== "object") {
+      return row;
+    }
+
+    const normalized = { ...row };
+    
+    // Normalizar tipos_equipos_permitidos que viene como JSONB de PostgreSQL
+    if ("tipos_equipos_permitidos" in normalized) {
+      const tipos = normalized.tipos_equipos_permitidos;
+      if (typeof tipos === "string") {
+        try {
+          normalized.tipos_equipos_permitidos = JSON.parse(tipos);
+        } catch {
+          normalized.tipos_equipos_permitidos = [];
+        }
+      } else if (Array.isArray(tipos)) {
+        normalized.tipos_equipos_permitidos = tipos;
+      } else if (tipos === null || tipos === undefined) {
+        normalized.tipos_equipos_permitidos = [];
+      } else {
+        normalized.tipos_equipos_permitidos = [];
+      }
+    }
+
+    return normalized;
   }
 
   async ensureEntityAreasTable() {

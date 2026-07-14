@@ -10,7 +10,7 @@ router.use(jwtAuth);
 
 router.get(
   "/",
-  permisosAuth(["CREAR_MANTENIMIENTO", "EDITAR_MANTENIMIENTO", "ELIMINAR_MANTENIMIENTO"]),
+  permisosAuth(["CREAR_MANTENIMIENTO", "EDITAR_MANTENIMIENTO", "ELIMINAR_MANTENIMIENTO", "FIRMAR_ORDEN_INTERVENTOR"]),
   controller.listarMantenimientos
 );
 

@@ -275,6 +275,10 @@ function App() {
   }, []);
 
   const isAdmin = hasPermission(user, "ADMIN_TOTAL");
+  // Chequeo directo (sin el atajo de ADMIN_TOTAL de hasPermission): el interventor
+  // trabaja sobre el consolidado de sus entidades asignadas, igual que el admin, en
+  // vez de quedar forzado a elegir una sola entidad a la vez.
+  const isInterventor = Array.isArray(user?.permisos) && user.permisos.includes("FIRMAR_ORDEN_INTERVENTOR");
   const entidadesAsignadas = useMemo(() => {
     const source = Array.isArray(user?.entidades_asignadas) ? user.entidades_asignadas : [];
     return source
@@ -301,14 +305,14 @@ function App() {
   }, [entidadesAsignadas, selectedEntidadId]);
 
   const hasEntityAccess = useMemo(() => {
-    if (isAdmin) return true;
+    if (isAdmin || isInterventor) return true;
     return entidadesAsignadas.some((item) => String(item.id) === String(selectedEntidadId));
-  }, [isAdmin, entidadesAsignadas, selectedEntidadId]);
-  const shouldShowEntitySelector = !isAdmin && (isEntitySelectorOpen || !hasEntityAccess);
+  }, [isAdmin, isInterventor, entidadesAsignadas, selectedEntidadId]);
+  const shouldShowEntitySelector = !isAdmin && !isInterventor && (isEntitySelectorOpen || !hasEntityAccess);
   const hasMultipleAssignedEntities = entidadesAsignadas.length > 1;
 
-  const effectiveSelectedEntidadId = isAdmin ? "" : selectedEntidadId;
-  const effectiveSelectedEntidadNombre = isAdmin ? "" : selectedEntidadNombre;
+  const effectiveSelectedEntidadId = (isAdmin || isInterventor) ? "" : selectedEntidadId;
+  const effectiveSelectedEntidadNombre = (isAdmin || isInterventor) ? "" : selectedEntidadNombre;
 
   if (isLoading) {
     return (
@@ -429,7 +433,7 @@ function App() {
       <Header user={user} onLogout={handleLogout} />
       <main className="main-content" id="main-content">
         <div className="app-routes-shell">
-          {!isAdmin && hasEntityAccess && (
+          {!isAdmin && !isInterventor && hasEntityAccess && (
             <section className="entity-context-bar">
               <div className="entity-context-pill">
                 <span>Entidad:</span>

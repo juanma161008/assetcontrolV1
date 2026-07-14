@@ -8,6 +8,7 @@ import {
   generateStrongPassword,
   validatePassword
 } from "../../utils/passwordPolicy";
+import useSilentAutoRefresh from "../../hooks/useSilentAutoRefresh";
 import "../../styles/UsuariosPage.css";
 
 const INITIAL_FORM = {
@@ -149,8 +150,8 @@ export default function UsuariosPage() {
     [entidadesPorId, selectedEntidadesIds]
   );
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async ({ withLoading = true } = {}) => {
+    if (withLoading) setLoading(true);
     setError("");
 
     try {
@@ -177,7 +178,7 @@ export default function UsuariosPage() {
     } catch (err) {
       setError(err?.response?.data?.message || "No se pudo cargar usuarios y permisos");
     } finally {
-      setLoading(false);
+      if (withLoading) setLoading(false);
     }
   }, []);
 
@@ -188,6 +189,10 @@ export default function UsuariosPage() {
     }
     loadData();
   }, [isAdmin, loadData]);
+
+  useSilentAutoRefresh(() => loadData({ withLoading: false }), {
+    enabled: isAdmin && !saving && !claveReseteada
+  });
 
   useEffect(() => {
     if (!selectedUser) {

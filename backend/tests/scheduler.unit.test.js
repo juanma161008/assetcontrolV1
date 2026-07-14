@@ -53,6 +53,8 @@ async function loadScheduler({
     smtpIsConfigured: vi.fn().mockReturnValue(smtpConfigured),
     emailExecute: vi.fn().mockResolvedValue(undefined),
     crearNotificacionExecute: vi.fn().mockResolvedValue(undefined),
+    respaldoObtener: vi.fn().mockResolvedValue(null),
+    respaldoRegistrarResultado: vi.fn().mockResolvedValue(undefined),
     setIntervalSpy: vi.spyOn(globalThis, "setInterval").mockImplementation(() => 0)
   };
 
@@ -123,6 +125,21 @@ async function loadScheduler({
       instance.repo = repo;
       instance.execute = (...args) => stubs.crearNotificacionExecute(...args);
     })
+  }));
+
+  vi.doMock("../src/infrastructure/repositories/ConfiguracionRespaldoPgRepository.js", () => ({
+    default: makeClassMock((instance) => {
+      instance.obtener = (...args) => stubs.respaldoObtener(...args);
+      instance.registrarResultado = (...args) => stubs.respaldoRegistrarResultado(...args);
+    })
+  }));
+
+  vi.doMock("../src/infrastructure/repositories/OrdenPgRepository.js", () => ({
+    default: makeClassMock()
+  }));
+
+  vi.doMock("../src/infrastructure/pdf/SimplePdfService.js", () => ({
+    default: makeClassMock()
   }));
 
   const scheduler = await import("../src/application/scheduler/index.js");
@@ -220,7 +237,7 @@ describe("scheduler module", () => {
     scheduler.startSchedulers();
     await flushMicrotasks();
 
-    expect(stubs.setIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(stubs.setIntervalSpy).toHaveBeenCalledTimes(2);
     expect(stubs.reportRepoFindByPeriodo).toHaveBeenCalledWith("2024-01");
     expect(stubs.buildKpiReport).toHaveBeenCalledWith({ year: 2024, monthIndex: 0 });
     expect(stubs.reportRepoCreate).toHaveBeenCalledWith(
@@ -259,7 +276,7 @@ describe("scheduler module", () => {
     scheduler.startSchedulers();
     await flushMicrotasks();
 
-    expect(stubs.setIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(stubs.setIntervalSpy).toHaveBeenCalledTimes(2);
     expect(stubs.buildKpiReport).not.toHaveBeenCalled();
     expect(stubs.reportRepoFindByPeriodo).not.toHaveBeenCalled();
     expect(stubs.emailExecute).not.toHaveBeenCalled();

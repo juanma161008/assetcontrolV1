@@ -34,7 +34,7 @@ const NAV_STRUCTURE = [
       {
         path: "/ordenes",
         label: "Órdenes de trabajo",
-        permissions: ["GENERAR_ORDEN", "FIRMAR_ORDEN", "CREAR_MANTENIMIENTO"]
+        permissions: ["GENERAR_ORDEN", "FIRMAR_ORDEN", "CREAR_MANTENIMIENTO", "FIRMAR_ORDEN_INTERVENTOR"]
       }
     ]
   },
@@ -76,6 +76,9 @@ function getRoleClass(role) {
 function Header({ user, onLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
+  // Chequeo directo (sin el atajo de ADMIN_TOTAL de hasPermission): el interventor
+  // no debe tener habilitadas las notificaciones, solo su flujo de ordenes.
+  const isInterventor = Array.isArray(user?.permisos) && user.permisos.includes("FIRMAR_ORDEN_INTERVENTOR");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [openGroup, setOpenGroup] = useState("");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -123,8 +126,10 @@ function Header({ user, onLogout }) {
   }, [user]);
 
   const visibleUserMenuItems = useMemo(() => {
-    return USER_MENU_ITEMS.filter((item) => hasAnyPermission(user, item.permissions));
-  }, [user]);
+    return USER_MENU_ITEMS
+      .filter((item) => hasAnyPermission(user, item.permissions))
+      .filter((item) => !isInterventor || item.path !== "/notificaciones");
+  }, [user, isInterventor]);
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -193,7 +198,7 @@ function Header({ user, onLogout }) {
     setOpenGroup("");
     setIsUserMenuOpen((previous) => {
       const nextValue = !previous;
-      if (nextValue) {
+      if (nextValue && !isInterventor) {
         loadNotifications();
       }
       return nextValue;
@@ -216,8 +221,9 @@ function Header({ user, onLogout }) {
   };
 
   useEffect(() => {
+    if (isInterventor) return;
     loadNotifications();
-  }, []);
+  }, [isInterventor]);
 
   const unreadCount = useMemo(() => {
     return notifications.filter((item) => !item.leido).length;
@@ -396,28 +402,30 @@ function Header({ user, onLogout }) {
                   <span className="user-role">{userRoleLabel}</span>
                 </div>
                 <span className="user-actions">
-                  <span className="user-bell" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-                      <path
-                        d="M6 9a6 6 0 0 1 12 0c0 4 2 5 2 5H4s2-1 2-5Z"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <path
-                        d="M10 18a2 2 0 0 0 4 0"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    {unreadCount > 0 && (
-                      <span className="notification-badge" aria-hidden="true">
-                        {unreadCount}
-                      </span>
-                    )}
-                  </span>
+                  {!isInterventor && (
+                    <span className="user-bell" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                        <path
+                          d="M6 9a6 6 0 0 1 12 0c0 4 2 5 2 5H4s2-1 2-5Z"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M10 18a2 2 0 0 0 4 0"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      {unreadCount > 0 && (
+                        <span className="notification-badge" aria-hidden="true">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </span>
+                  )}
                   <span className="user-menu-caret">{isUserMenuOpen ? "^" : "v"}</span>
                 </span>
               </button>
@@ -427,63 +435,65 @@ function Header({ user, onLogout }) {
                 id={userMenuId}
                 aria-hidden={!isUserMenuOpen}
               >
-                <div className="user-dropdown-section">
-                  <div className="notification-header">
-                    <span>Notificaciones</span>
-                    <button
-                      type="button"
-                      className="notification-clear"
-                      onClick={handleMarkAllNotifications}
-                      disabled={unreadCount === 0}
-                    >
-                      Marcar todas
-                    </button>
-                  </div>
-
-                  {notificationError && (
-                    <div className="notification-error">{notificationError}</div>
-                  )}
-
-                  {isLoadingNotifications ? (
-                    <div className="notification-empty">Cargando...</div>
-                  ) : notifications.length === 0 ? (
-                    <div className="notification-empty">Sin notificaciones</div>
-                  ) : (
-                    <div className="notification-list">
-                      {previewNotifications.map((item) => (
-                        <div
-                          key={item.id}
-                          className={`notification-item ${item.leido ? "read" : "unread"}`}
-                        >
-                          <button
-                            type="button"
-                            className="notification-item-main"
-                            onClick={() => handleNotificationClick(item)}
-                          >
-                            <div className="notification-title">{item.titulo}</div>
-                            {item.mensaje && <div className="notification-text">{item.mensaje}</div>}
-                            <div className="notification-time">{formatNotificationDate(item.creado_en)}</div>
-                          </button>
-                          <button
-                            type="button"
-                            className="notification-delete"
-                            onClick={(event) => handleDeleteNotification(event, item.id)}
-                            aria-label={`Eliminar notificación ${item.titulo || "seleccionada"}`}
-                          >
-                            Eliminar
-                          </button>
-                        </div>
-                      ))}
+                {!isInterventor && (
+                  <div className="user-dropdown-section">
+                    <div className="notification-header">
+                      <span>Notificaciones</span>
+                      <button
+                        type="button"
+                        className="notification-clear"
+                        onClick={handleMarkAllNotifications}
+                        disabled={unreadCount === 0}
+                      >
+                        Marcar todas
+                      </button>
                     </div>
-                  )}
-                  <Link
-                    to="/notificaciones"
-                    className="notification-view-all"
-                    onClick={closeMenus}
-                  >
-                    Ver todas las notificaciones
-                  </Link>
-                </div>
+
+                    {notificationError && (
+                      <div className="notification-error">{notificationError}</div>
+                    )}
+
+                    {isLoadingNotifications ? (
+                      <div className="notification-empty">Cargando...</div>
+                    ) : notifications.length === 0 ? (
+                      <div className="notification-empty">Sin notificaciones</div>
+                    ) : (
+                      <div className="notification-list">
+                        {previewNotifications.map((item) => (
+                          <div
+                            key={item.id}
+                            className={`notification-item ${item.leido ? "read" : "unread"}`}
+                          >
+                            <button
+                              type="button"
+                              className="notification-item-main"
+                              onClick={() => handleNotificationClick(item)}
+                            >
+                              <div className="notification-title">{item.titulo}</div>
+                              {item.mensaje && <div className="notification-text">{item.mensaje}</div>}
+                              <div className="notification-time">{formatNotificationDate(item.creado_en)}</div>
+                            </button>
+                            <button
+                              type="button"
+                              className="notification-delete"
+                              onClick={(event) => handleDeleteNotification(event, item.id)}
+                              aria-label={`Eliminar notificación ${item.titulo || "seleccionada"}`}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <Link
+                      to="/notificaciones"
+                      className="notification-view-all"
+                      onClick={closeMenus}
+                    >
+                      Ver todas las notificaciones
+                    </Link>
+                  </div>
+                )}
 
                 <div className="user-dropdown-section">
                   {visibleUserMenuItems.map((item) => {

@@ -18,6 +18,7 @@ import auditoriaRoutes from "./interfaces/routes/auditoria.routes.js";
 import notificacionesRoutes from "./interfaces/routes/notificaciones.routes.js";
 import helpdeskRoutes from "./interfaces/routes/helpdesk.routes.js";
 import reportesRoutes from "./interfaces/routes/reportes.routes.js";
+import respaldoRoutes from "./interfaces/routes/respaldo.routes.js";
 
 const app = express();
 
@@ -108,6 +109,7 @@ app.use("/api/auditoria", auditoriaRoutes);
 app.use("/api/notificaciones", notificacionesRoutes);
 app.use("/api/helpdesk", helpdeskRoutes);
 app.use("/api/reportes", reportesRoutes);
+app.use("/api/respaldo", respaldoRoutes);
 
 app.get("/", (req, res) => {
   res.json({ status: "AssetControl API", version: "1.0" });

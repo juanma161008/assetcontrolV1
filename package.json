@@ -13,7 +13,9 @@
     "prod:logs": "docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production logs -f"
   },
   "dependencies": {
-    "helmet": "^8.1.0"
+    "helmet": "^8.1.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

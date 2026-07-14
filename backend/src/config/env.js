@@ -10,6 +10,7 @@ export default {
   DB_NAME: process.env.DB_NAME || "assetcontrol",
   DB_USER: process.env.DB_USER || "postgres",
   DB_PASSWORD: process.env.DB_PASSWORD,
+  PG_DUMP_PATH: process.env.PG_DUMP_PATH || "",
 
   JWT_SECRET: process.env.JWT_SECRET,
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "8h",

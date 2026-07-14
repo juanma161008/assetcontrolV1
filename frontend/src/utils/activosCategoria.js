@@ -30,6 +30,7 @@ const EQUIPO_OPTIONS_BY_CATEGORY = {
     "Laptop",
     "Desktop",
     "All In One",
+    "Ergotron",
     "Thin Client",
     "Tablet",
     "Workstation",
@@ -176,8 +177,8 @@ const inferCategoriaActivo = (item = {}) => {
   }
 
   if (
-    hasAnyNormalizedPhrase(sourceText, ["laptop", "portatil", "desktop", "all in one", "thin client", "tablet", "workstation"]) ||
-    hasAnyNormalizedToken(tokenSet, ["laptop", "portatil", "desktop", "tablet", "workstation", "pc"])
+    hasAnyNormalizedPhrase(sourceText, ["laptop", "portatil", "desktop", "escritorio", "all in one", "aio", "thin client", "tablet", "workstation", "ergotron", "ergotrom"]) ||
+    hasAnyNormalizedToken(tokenSet, ["laptop", "portatil", "desktop", "escritorio", "allinone", "aio", "tablet", "workstation", "pc", "ergotron", "ergotrom"])
   ) {
     return "Equipo de trabajo";
   }

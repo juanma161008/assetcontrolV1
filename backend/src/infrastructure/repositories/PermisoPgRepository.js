@@ -11,12 +11,52 @@ const DEFAULT_PERMISSIONS = [
   "EDITAR_MANTENIMIENTO",
   "ELIMINAR_MANTENIMIENTO",
   "GENERAR_ORDEN",
-  "FIRMAR_ORDEN"
+  "FIRMAR_ORDEN",
+  "FIRMAR_ORDEN_INTERVENTOR"
 ];
+
+const INTERVENTOR_PERMISSION_NAME = "FIRMAR_ORDEN_INTERVENTOR";
+const INTERVENTOR_ROLE_NAME = "Interventor";
 
 export default class PermisoPgRepository {
   constructor() {
     this.userPermissionsTableReady = false;
+    this.interventorPermissionReady = false;
+  }
+
+  async ensureInterventorPermission() {
+    if (this.interventorPermissionReady) {
+      return;
+    }
+
+    if (process.env.NODE_ENV === "test") {
+      this.interventorPermissionReady = true;
+      return;
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO permisos (nombre)
+         SELECT $1
+         WHERE NOT EXISTS (SELECT 1 FROM permisos WHERE nombre = $1)`,
+        [INTERVENTOR_PERMISSION_NAME]
+      );
+
+      await pool.query(
+        `INSERT INTO rol_permisos (rol_id, permiso_id)
+         SELECT r.id, p.id
+         FROM roles r, permisos p
+         WHERE r.nombre ILIKE $1 AND p.nombre = $2
+           AND NOT EXISTS (
+             SELECT 1 FROM rol_permisos rp WHERE rp.rol_id = r.id AND rp.permiso_id = p.id
+           )`,
+        [INTERVENTOR_ROLE_NAME, INTERVENTOR_PERMISSION_NAME]
+      );
+    } catch {
+      // Las tablas de roles/permisos pueden no existir aun o la BD no permitir el insert.
+    } finally {
+      this.interventorPermissionReady = true;
+    }
   }
 
   async ensureUserPermissionsTable() {
@@ -39,6 +79,8 @@ export default class PermisoPgRepository {
   }
 
   async getPermisosByRol(rolId) {
+    await this.ensureInterventorPermission();
+
     const res = await pool.query(
       `SELECT p.nombre FROM permisos p
        JOIN rol_permisos rp ON rp.permiso_id=p.id
@@ -55,6 +97,8 @@ export default class PermisoPgRepository {
   }
 
   async getPermisosCatalogo() {
+    await this.ensureInterventorPermission();
+
     try {
       const res = await pool.query(
         "SELECT nombre FROM permisos ORDER BY nombre ASC"

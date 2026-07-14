@@ -9,8 +9,7 @@ export default class CrearEntidad {
     const tipo = String(data?.tipo || "").trim();
     const nit = data?.nit;
     const direccion = data?.direccion;
-
-
+    const tiposEquipos = data?.tipos_equipos_permitidos;
 
     if (!nombre || !tipo) {
       throw new Error("Nombre y tipo son obligatorios");
@@ -20,12 +19,6 @@ export default class CrearEntidad {
       // Compatibilidad con tests existentes: se exige NIT solo cuando se envía explícitamente.
       nit && nit.trim();
     }
-
-
-
-
-
-
 
     if (typeof this.entidadRepository.findByNombreNormalized === "function") {
       const existente = await this.entidadRepository.findByNombreNormalized(nombre);
@@ -38,6 +31,10 @@ export default class CrearEntidad {
 
     if (direccion !== undefined) {
       payload.direccion = direccion;
+    }
+
+    if (Array.isArray(tiposEquipos) && tiposEquipos.length > 0) {
+      payload.tipos_equipos_permitidos = tiposEquipos;
     }
 
     const entidad = await this.entidadRepository.create(payload);

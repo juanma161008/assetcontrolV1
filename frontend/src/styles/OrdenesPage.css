@@ -93,6 +93,45 @@
 }
 
 /* ===========================================
+   BADGE DE ESTADO DE ORDEN
+   =========================================== */
+.ordenes-estado-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid #d8e2f2;
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.ordenes-estado-firmada {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
+.ordenes-estado-pendiente-interventor {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #9a3412;
+}
+
+.ordenes-estado-aprobada {
+  background: #ecfdf5;
+  border-color: #86efac;
+  color: #14532d;
+}
+
+.ordenes-estado-rechazada {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+/* ===========================================
    FILTROS Y ACCIONES DE LISTADO
    =========================================== */
 .ordenes-filters {
@@ -218,7 +257,7 @@
 }
 
 .ordenes-detail-card {
-  width: min(640px, 100%);
+  width: min(920px, 100%);
   max-height: calc(100svh - 32px);
   overflow: auto;
   background: #ffffff;
@@ -226,6 +265,36 @@
   border: 1px solid #cad7f2;
   box-shadow: 0 16px 32px rgba(15, 23, 42, 0.28);
   padding: clamp(16px, 2vw, 22px);
+}
+
+.ordenes-detail-preview {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #dbe3f0;
+  background: #ffffff;
+}
+
+.ordenes-detail-preview h4 {
+  margin: 0 0 8px;
+  color: var(--brand-900);
+}
+
+.ordenes-detail-preview-frame {
+  width: 100%;
+  height: 60vh;
+  min-height: 420px;
+  border: 1px solid #dbe3f0;
+  border-radius: 10px;
+  background: #f1f5f9;
+}
+
+.ordenes-detail-preview-status {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #dbe3f0;
+  background: #f8fbff;
+  color: #1f2937;
 }
 
 .ordenes-detail-card h3 {

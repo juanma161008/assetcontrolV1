@@ -12,7 +12,9 @@ import { sendEmailNotification } from "../../services/notificacionService";
 import { buildDocumentEmailHtml, buildMaintenanceOrderHtml } from "../../utils/emailDocuments";
 import { buildMaintenancePdfReportHtml } from "../../utils/maintenanceReport";
 import { toProperCase } from "../../utils/formatters";
+import { imageToDataUrl } from "../../utils/imageToDataUrl";
 import useAnimatedPresence from "../../hooks/useAnimatedPresence";
+import useSilentAutoRefresh from "../../hooks/useSilentAutoRefresh";
 import logoM5 from "../../assets/logos/logom5.png";
 import logoAssetControl from "../../assets/logos/logo-assetcontrol.png";
 import {
@@ -62,7 +64,7 @@ const MAINTENANCE_REPORT_COLUMNS = [
   { key: "estado", label: "Estado" },
   { key: "tecnico", label: "Tecnico" },
   { key: "planificacion", label: "Planificacion" },
-  { key: "descripcion", label: "Descripcion" },
+  { key: "descripcion", label: "Observaciones" },
   { key: "cambioPartes", label: "Cambio de partes" }
 ];
 const MAINTENANCE_EXCEL_COLUMN_WIDTHS = {
@@ -120,21 +122,6 @@ const reducirFirma = (dataURL) =>
     img.onerror = reject;
     img.src = dataURL;
   });
-const imageToDataUrl = async (src) => {
-  if (!src) return "";
-  if (String(src).startsWith("data:image")) return src;
-  const response = await fetch(src);
-  if (!response.ok) {
-    throw new Error("No se pudo cargar el logo");
-  }
-  const blob = await response.blob();
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("No se pudo convertir el logo"));
-    reader.readAsDataURL(blob);
-  });
-};
 const parseExcelImage = (dataUrl) => {
   if (!dataUrl) return null;
   const match = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(String(dataUrl));
@@ -270,13 +257,13 @@ const getNumeroReporteLabel = (tipo = "") =>
     ? "Número de reporte / código (opcional)"
     : isCronogramaTipo(tipo)
       ? "Área / Dependencia *"
-      : "Número de reporte / consecutivo *";
+      : "Número de reporte / consecutivo (opcional)";
 const getNumeroReporteHelp = (tipo = "") =>
   isPuntoRedTipo(tipo)
     ? "Si el Punto de Red ya tiene número de reporte, escríbelo aquí. Si lo dejas vacío, el sistema generará uno o más PR consecutivos automáticamente."
     : isCronogramaTipo(tipo)
       ? "Registra el área o dependencia para este cronograma. Este registro se guarda sin activo asociado."
-      : "Se sugiere el siguiente consecutivo del historial. Puedes modificarlo antes de guardar.";
+      : "Opcional: si lo dejas vacío, el sistema generará el siguiente consecutivo automáticamente.";
 const formatCategoriaLabel = (value = "") => {
   const normalized = normalizeCategoriaActivo(value);
   if (!normalized) return String(value || "").trim();
@@ -353,7 +340,7 @@ const IMPORT_ALIAS_SETS = Object.fromEntries(
     new Set((Array.isArray(aliases) ? aliases : []).map((item) => normalizeImportKey(item)))
   ])
 );
-const REQUIRED_IMPORT_FIELDS = ["fecha", "numeroReporte", "activo", "tipo"];
+const REQUIRED_IMPORT_FIELDS = ["fecha", "activo", "tipo"];
 const getEstadoInicialByPlanificacion = (planificacion = "") =>
   String(planificacion || "").trim().toLowerCase() === "realizado" ? "Finalizado" : "En proceso";
 const getPlanificacionByEstado = (estado = "") =>
@@ -362,9 +349,68 @@ const getNumeroReporteMantenimiento = (mantenimiento = {}) =>
   String(
     mantenimiento.numeroReporte ??
     mantenimiento.numero_reporte ??
-    mantenimiento.numeroreporte ??
+    mantenimiento.numeroreporte ?? 
     ""
   ).trim();
+const ORDER_NUMBER_PREFIX = "MT";
+const ORDER_NUMBER_WIDTH = 5;
+const getOrderDateKey = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}${month}${day}`;
+};
+// Codigo de tipo que se embebe en el numero de orden (MT-PV-20260710-00001).
+const getTipoOrderCode = (tipo = "") => {
+  const normalized = normalizeSearchValue(tipo);
+  if (!normalized) return "";
+  if (normalized.includes("preventivo") && normalized.includes("correctivo")) return "PVCR";
+  if (isPuntoRedTipo(tipo)) return "PR";
+  if (isCronogramaTipo(tipo)) return "";
+  if (normalized === "preventivo") return "PV";
+  if (normalized === "correctivo") return "CR";
+  if (normalized === "predictivo") return "PD";
+  if (normalized === "calibracion") return "CA";
+  return "";
+};
+const parseOrderNumber = (value = "") => {
+  const source = String(value || "").trim();
+  if (!source) return null;
+
+  // Formato con codigo de tipo: MT-PV-20260710-00001.
+  const matchConTipo = /^MT-([A-Z]{2,4})-(\d{8})-(\d{5})(?:-.+)?$/i.exec(source);
+  if (matchConTipo) {
+    const sequence = Number(matchConTipo[3]);
+    if (!Number.isInteger(sequence) || sequence <= 0) return null;
+    return {
+      dateKey: matchConTipo[2],
+      sequence,
+      tipoCode: matchConTipo[1].toUpperCase()
+    };
+  }
+
+  // Formato anterior sin codigo de tipo (ordenes creadas antes de este cambio).
+  const match = /^MT-(\d{8})-(\d{5})(?:-.+)?$/i.exec(source);
+  if (!match) return null;
+
+  const sequence = Number(match[2]);
+  if (!Number.isInteger(sequence) || sequence <= 0) return null;
+
+  return {
+    dateKey: match[1],
+    sequence,
+    tipoCode: ""
+  };
+};
+const buildOrderNumber = (dateKey, sequence, tipoCode = "") => {
+  const secuencia = String(Math.max(1, Number(sequence) || 1)).padStart(ORDER_NUMBER_WIDTH, "0");
+  return tipoCode
+    ? `${ORDER_NUMBER_PREFIX}-${tipoCode}-${dateKey}-${secuencia}`
+    : `${ORDER_NUMBER_PREFIX}-${dateKey}-${secuencia}`;
+};
 const getPuntoRedActivoLabel = (mantenimiento = {}) => {
   const referencia = getNumeroReporteMantenimiento(mantenimiento);
   return referencia ? `Punto de Red / ${referencia}` : "Punto de Red";
@@ -581,7 +627,9 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   const [createModalReady, setCreateModalReady] = useState(false);
   const [modalMantenimiento, setModalMantenimiento] = useState(null);
   const [showFacturaModal, setShowFacturaModal] = useState(false);
+  const [numeroOrdenSugerido, setNumeroOrdenSugerido] = useState("");
   const [bulkFacturaTargets, setBulkFacturaTargets] = useState([]);
+  const [ordenExistente, setOrdenExistente] = useState(null);
   const [isOrderLoading, setIsOrderLoading] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [, setIsMobileLayout] = useState(() => isMobileViewport());
@@ -599,6 +647,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   const resetDetailModalState = useCallback(() => {
     setModalMantenimiento(null);
     setShowFacturaModal(false);
+    setNumeroOrdenSugerido("");
     setBulkFacturaTargets([]);
     setError("");
     setSuccess("");
@@ -1325,7 +1374,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   };
 
   const isImportPayloadComplete = (payload = {}) => {
-    if (!payload.fecha || !payload.numeroReporte || !payload.tipo) {
+    if (!payload.fecha || !payload.tipo) {
       return false;
     }
 
@@ -1409,7 +1458,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       const firstSheet = workbook.Sheets[firstSheetName];
       const { rows, firstDataRowNumber } = extractImportRowsFromSheet(firstSheet, XLSX);
       if (!Array.isArray(rows) || rows.length === 0) {
-        setError("No se detectaron encabezados válidos o filas para importar. Verifica títulos como Fecha, Número de reporte, Activo y Tipo.");
+        setError("No se detectaron encabezados válidos o filas para importar. Verifica títulos como Fecha, Activo y Tipo.");
         return;
       }
 
@@ -1517,6 +1566,11 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     };
     init();
   }, [isAdmin, cargarEntidades]);
+
+  useSilentAutoRefresh(
+    () => Promise.all([cargarMantenimientos(), cargarActivos(), cargarEntidades()]),
+    { enabled: !showModal && !showCreateModal && !isOrderLoading && !isSendingEmail && !isImporting && !isCreating }
+  );
 
   useEffect(() => {
     const browserWindow = getBrowserWindow();
@@ -1807,7 +1861,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
         const correctivoCambioPartes = String(drafts?.correctivo?.cambioPartes || form.cambioPartes || "").trim();
 
         if (!preventivoNumero || !correctivoNumero) {
-          setError("Los dos formularios requieren número de reporte.");
+          setError("No se pudo sugerir un número de reporte para ambos formularios.");
           setIsCreating(false);
           return;
         }
@@ -2083,37 +2137,37 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     await eliminarMantenimientoById(modalMantenimiento.id, { closeAfter: true });
   };
 
-  const buildFallbackOrdenNumero = (mantenimientoConsecutivo) => (
-    `OT-MANT-${mantenimientoConsecutivo}-${String(Date.now()).slice(-5)}`
-  );
-
-  const obtenerNumeroOrdenFactura = async (numeroBase, mantenimientoConsecutivo, sufijo = "") => {
-    const base = String(numeroBase || "").trim().replace(/^OT-?/i, "");
-    const cleanSuffix = String(sufijo || "").trim().replace(/\s+/g, "-");
-
-    if (base && cleanSuffix) {
-      return `OT-${base}-${cleanSuffix}`.replaceAll(/\s+/g, "-");
-    }
-
-    if (base) {
-      return `OT-${base}`.replaceAll(/\s+/g, "-");
-    }
-
-    let numero = buildFallbackOrdenNumero(mantenimientoConsecutivo);
+  const obtenerNumeroOrdenFactura = async (numerosReservados = new Set(), fechaReferencia = new Date(), tipo = "") => {
+    const dateKey = getOrderDateKey(fechaReferencia) || getOrderDateKey();
+    const tipoCode = getTipoOrderCode(tipo);
+    const usados = new Set(
+      Array.from(numerosReservados instanceof Set ? numerosReservados : [])
+        .map((item) => Number(item))
+        .filter((item) => Number.isInteger(item) && item > 0)
+    );
 
     try {
       const responseOrdenes = await httpClient.get("/api/ordenes");
       const ordenes = responseOrdenes.data.data || responseOrdenes.data || [];
-      const usados = (Array.isArray(ordenes) ? ordenes : [])
-        .map((item) => extraerConsecutivo(item.numero))
-        .filter((item) => Number.isInteger(item) && item > 0);
-      const siguiente = obtenerSiguienteConsecutivo(usados);
-      numero = `OT-${String(siguiente).padStart(2, "0")}`;
+      // El consecutivo es global (no se reinicia por dia): se revisan TODAS las
+      // ordenes ya generadas en Ordenes de trabajo, sin importar su fecha, para
+      // asignar siempre el siguiente numero que no se haya usado todavia.
+      (Array.isArray(ordenes) ? ordenes : []).forEach((orden) => {
+        const parsed = parseOrderNumber(orden?.numero);
+        if (parsed) {
+          usados.add(parsed.sequence);
+        }
+      });
     } catch {
-      // Si falla la consulta de ordenes, se conserva el fallback.
+      // Si falla la consulta de ordenes, se usa el consecutivo local disponible.
     }
 
-    return numero;
+    let siguiente = 1;
+    while (usados.has(siguiente)) {
+      siguiente += 1;
+    }
+
+    return buildOrderNumber(dateKey, siguiente, tipoCode);
   };
 
   const firmarOrdenSiAplica = async (ordenId, firmaBase64) => {
@@ -2135,6 +2189,28 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     }
   };
 
+  // Al bloquear/generar la orden ya firmada, se intenta enviar de una vez al interventor
+  // de la entidad. Si aun no hay interventor asignado, la orden queda creada igual y se
+  // puede reenviar manualmente desde Ordenes.
+  const enviarAInterventorSiAplica = async (ordenId) => {
+    if (!ordenId) {
+      return { enviadaInterventor: false, warningInterventor: "" };
+    }
+
+    try {
+      await httpClient.post(`/api/ordenes/${ordenId}/enviar-interventor`);
+      return { enviadaInterventor: true, warningInterventor: "" };
+    } catch (interventorErr) {
+      return {
+        enviadaInterventor: false,
+        warningInterventor:
+          interventorErr?.response?.data?.message ||
+          interventorErr?.response?.data?.error ||
+          "No se pudo enviar al interventor"
+      };
+    }
+  };
+
   const prepararFacturaPayload = async (facturaPayload = {}) => {
     const payload = {
       ...facturaPayload,
@@ -2144,10 +2220,6 @@ export default function MantenimientosPage({ selectedEntidadId }) {
 
     if (payload.usuarioFirma) {
       payload.usuarioFirma = await reducirFirma(payload.usuarioFirma);
-    }
-
-    if (payload.autorizaFirma) {
-      payload.autorizaFirma = await reducirFirma(payload.autorizaFirma);
     }
 
     return payload;
@@ -2160,7 +2232,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     localStorage.setItem(storageKey, JSON.stringify(facturaPayload));
   };
 
-  const guardarOrdenPdfLocal = (orden, numeroOrden, facturaPayload, mantenimientoConsecutivo, mantenimientoBase = modalMantenimiento) => {
+  const guardarOrdenPdfLocal = async (orden, numeroOrden, facturaPayload, mantenimientoConsecutivo, mantenimientoBase = modalMantenimiento) => {
     if (!orden.id || !mantenimientoBase?.id) return;
 
     const activo = obtenerActivoMantenimiento(mantenimientoBase) || {};
@@ -2168,6 +2240,13 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       ...mantenimientoBase,
       id: mantenimientoConsecutivo
     };
+
+    let logoM5DataUrl = logoM5;
+    try {
+      logoM5DataUrl = await imageToDataUrl(logoM5);
+    } catch {
+      // Si falla la conversion, se usa la ruta original del logo.
+    }
 
     const payloadOrdenPdf = {
       ordenId: orden.id,
@@ -2182,38 +2261,52 @@ export default function MantenimientosPage({ selectedEntidadId }) {
         factura: facturaPayload || {},
         numeroOrden: orden.numero || numeroOrden,
         mantenimientoConsecutivo,
-        logos: { logoM5 }
+        logos: { logoM5: logoM5DataUrl }
       })
     };
 
     localStorage.setItem(`orden_pdf_${orden.id}`, JSON.stringify(payloadOrdenPdf));
   };
 
-  const generarOrdenParaMantenimiento = async (mantenimientoObjetivo, facturaPayload = {}, numeroSufijo = "") => {
+  const generarOrdenParaMantenimiento = async (mantenimientoObjetivo, facturaPayload = {}, numeroOrdenForzado = "") => {
     if (!mantenimientoObjetivo?.id) {
       throw new Error("No hay mantenimiento objetivo");
     }
 
     const mantenimientoConsecutivo =
       obtenerConsecutivoMantenimiento(mantenimientoObjetivo.id) || mantenimientoObjetivo.id;
-    const firmaBase64 = facturaPayload.autorizaFirma || facturaPayload.usuarioFirma || "";
-    const numeroBase = String(facturaPayload.numeroFactura || "").trim();
-    const numero = await obtenerNumeroOrdenFactura(numeroBase, mantenimientoConsecutivo, numeroSufijo);
+    const firmaBase64 = facturaPayload.usuarioFirma || "";
+    const numero = String(
+      numeroOrdenForzado || (await obtenerNumeroOrdenFactura(new Set(), new Date(), mantenimientoObjetivo.tipo))
+    ).trim();
     const response = await httpClient.post("/api/ordenes", {
       numero,
       fecha: new Date().toISOString().slice(0, 10),
       estado: "Generada",
-      mantenimientos: [mantenimientoObjetivo.id]
+      mantenimientos: [mantenimientoObjetivo.id],
+      usuarioNombre: facturaPayload.usuarioNombre || "",
+      usuarioArea: facturaPayload.usuarioArea || "",
+      usuarioCargo: facturaPayload.usuarioCargo || ""
     });
 
     const orden = response.data.data || response.data;
     const { firmaAplicada, warningFirma } = await firmarOrdenSiAplica(orden.id, firmaBase64);
+
+    let enviadaInterventor = false;
+    let warningInterventor = "";
+    if (firmaAplicada) {
+      const resultInterventor = await enviarAInterventorSiAplica(orden.id);
+      enviadaInterventor = resultInterventor.enviadaInterventor;
+      warningInterventor = resultInterventor.warningInterventor;
+    }
+
     const facturaDocumento = {
       ...facturaPayload,
-      numeroFactura: numero
+      numeroFactura: numero,
+      numeroOrden: numero
     };
 
-    guardarOrdenPdfLocal(orden, numero, facturaDocumento, mantenimientoConsecutivo, mantenimientoObjetivo);
+    await guardarOrdenPdfLocal(orden, numero, facturaDocumento, mantenimientoConsecutivo, mantenimientoObjetivo);
     persistirFacturaFirmada(mantenimientoObjetivo, facturaDocumento);
 
     return {
@@ -2222,6 +2315,8 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       mantenimientoObjetivo,
       firmaAplicada,
       warningFirma,
+      enviadaInterventor,
+      warningInterventor,
       facturaDocumento
     };
   };
@@ -2247,19 +2342,27 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       const payload = await prepararFacturaPayload(facturaPayload);
       const results = [];
       const successfulIds = [];
+      const numerosOrdenReservados = new Set();
 
       for (const mantenimientoObjetivo of targets) {
-        const mantenimientoConsecutivo =
-          obtenerConsecutivoMantenimiento(mantenimientoObjetivo.id) || mantenimientoObjetivo.id;
-        const numeroSufijo = targets.length > 1
-          ? String(mantenimientoConsecutivo).trim().replace(/\s+/g, "-")
-          : "";
+        // Siempre se consulta el consecutivo vigente en el servidor justo antes de crear
+        // la orden: el numero sugerido en el formulario puede haber quedado obsoleto si
+        // otra orden ya tomo ese consecutivo mientras el formulario estaba abierto.
+        const numeroOrden = await obtenerNumeroOrdenFactura(
+          numerosOrdenReservados,
+          new Date(),
+          mantenimientoObjetivo.tipo
+        );
+        const parsedNumeroOrden = parseOrderNumber(numeroOrden);
+        if (parsedNumeroOrden) {
+          numerosOrdenReservados.add(parsedNumeroOrden.sequence);
+        }
 
         try {
           const result = await generarOrdenParaMantenimiento(
             mantenimientoObjetivo,
             payload,
-            numeroSufijo
+            numeroOrden
           );
           results.push({ ok: true, ...result });
           successfulIds.push(Number(mantenimientoObjetivo.id));
@@ -2285,6 +2388,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       const failed = results.filter((item) => !item.ok);
       const created = results.filter((item) => item.ok);
       const unsigned = created.filter((item) => !item.firmaAplicada);
+      const sinInterventor = created.filter((item) => item.firmaAplicada && !item.enviadaInterventor);
 
       setShowFacturaModal(false);
       setBulkFacturaTargets([]);
@@ -2310,18 +2414,36 @@ export default function MantenimientosPage({ selectedEntidadId }) {
         })
         .join(" | ");
 
+      const resumenSinInterventor = sinInterventor
+        .slice(0, 3)
+        .map((item, index) => {
+          const mantenimiento = item.mantenimientoObjetivo;
+          const consecutivo = mantenimiento
+            ? obtenerConsecutivoMantenimiento(mantenimiento.id) || mantenimiento.id
+            : index + 1;
+          return `MT-${String(consecutivo).padStart(4, "0")}: ${item.warningInterventor || "No se pudo enviar al interventor"}`;
+        })
+        .join(" | ");
+
       if (created.length > 0) {
         if (created.length === 1) {
           const ordenCreada = created[0].orden;
           const numeroCreado = ordenCreada.numero || created[0].numero;
-          setSuccess(`Orden creada: ${numeroCreado}${created[0].firmaAplicada ? " (FIRMADA)" : ""}`);
+          const sufijoFirma = created[0].firmaAplicada ? " (FIRMADA)" : "";
+          const sufijoInterventor = created[0].enviadaInterventor ? " y enviada al interventor" : "";
+          setSuccess(`Orden creada: ${numeroCreado}${sufijoFirma}${sufijoInterventor}`);
         } else {
-          setSuccess(`${created.length} órdenes creadas correctamente`);
+          const enviadasInterventor = created.filter((item) => item.enviadaInterventor).length;
+          const sufijoInterventor = enviadasInterventor > 0 ? ` (${enviadasInterventor} enviadas al interventor)` : "";
+          setSuccess(`${created.length} órdenes creadas correctamente${sufijoInterventor}`);
         }
 
         const mensajesError = [];
         if (unsigned.length > 0) {
           mensajesError.push(`Algunas órdenes se crearon sin firma: ${resumenSinFirma}`);
+        }
+        if (sinInterventor.length > 0) {
+          mensajesError.push(`No se pudo enviar automáticamente al interventor: ${resumenSinInterventor}. Puedes reenviarla manualmente desde Órdenes.`);
         }
         if (failed.length > 0) {
           mensajesError.push(`Generación parcial: ${created.length}/${results.length}. ${resumenFallos}`);
@@ -2351,14 +2473,14 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     }
   };
 
-  const abrirFactura = () => {
+  const abrirFactura = async () => {
     const selectedTargets = selectedMantenimientos.length > 0 ? selectedMantenimientos : [];
     const targetList = selectedTargets.length > 0
       ? selectedTargets
       : (modalMantenimiento?.id ? [modalMantenimiento] : []);
 
     if (!targetList.length) {
-      setError("Selecciona al menos un mantenimiento para generar la factura.");
+      setError("Selecciona al menos un mantenimiento para generar la orden.");
       return;
     }
 
@@ -2366,6 +2488,22 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     setSuccess("");
     setBulkFacturaTargets(targetList);
     setModalMantenimiento(targetList[0]);
+    setNumeroOrdenSugerido(await obtenerNumeroOrdenFactura(new Set(), new Date(), targetList[0]?.tipo));
+
+    setOrdenExistente(null);
+    if (targetList.length === 1) {
+      try {
+        const response = await httpClient.get(`/api/ordenes/por-mantenimiento/${targetList[0].id}`);
+        // La API responde { data: null } cuando aun no existe una orden para este
+        // mantenimiento: usar ?? (no ||) para no confundir ese null con la respuesta
+        // completa, que siempre es un objeto "truthy".
+        const orden = response.data?.data ?? null;
+        setOrdenExistente(orden);
+      } catch {
+        setOrdenExistente(null);
+      }
+    }
+
     setShowModal(true);
     setShowFacturaModal(true);
   };
@@ -2390,21 +2528,27 @@ export default function MantenimientosPage({ selectedEntidadId }) {
     }
 
     const numeroFactura = String(facturaData.numeroFactura || "").trim();
+    const numeroOrden = numeroFactura || await obtenerNumeroOrdenFactura(new Set(), new Date(), modalMantenimiento.tipo);
+    const subject = `Orden de mantenimiento ${numeroOrden}`;
     const mantenimientoConsecutivo =
       obtenerConsecutivoMantenimiento(modalMantenimiento.id) || modalMantenimiento.id;
-    const numeroOrden = numeroFactura ? `OT-${numeroFactura}` : `OT-MANT-${String(mantenimientoConsecutivo || "SIN-ID")}`;
-    const subject = `Orden de mantenimiento ${numeroOrden}`;
     const mantenimientoDocumento = {
       ...modalMantenimiento,
       id: mantenimientoConsecutivo
     };
+    let logoM5DataUrl = logoM5;
+    try {
+      logoM5DataUrl = await imageToDataUrl(logoM5);
+    } catch {
+      // Si falla la conversion, se usa la ruta original del logo.
+    }
     const ordenHtml = buildMaintenanceOrderHtml({
       activo: activoRelacionado || {},
       mantenimiento: mantenimientoDocumento,
       factura: facturaData || {},
       numeroOrden,
       mantenimientoConsecutivo,
-      logos: { logoM5 }
+      logos: { logoM5: logoM5DataUrl }
     });
 
     const signatureText = [
@@ -2421,7 +2565,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
       signatureText,
       senderName: currentUser.nombre || "",
       senderRole: "AssetControl | Microcinco S.A.S",
-      logos: { logoM5 }
+      logos: { logoM5: logoM5DataUrl }
     });
 
     const textFallback = [
@@ -2456,6 +2600,8 @@ export default function MantenimientosPage({ selectedEntidadId }) {
   const cerrarFactura = () => {
     setShowFacturaModal(false);
     setBulkFacturaTargets([]);
+    setNumeroOrdenSugerido("");
+    setOrdenExistente(null);
   };
 
   const buildMantenimientoSearchText = useCallback((mantenimiento) => {
@@ -3449,7 +3595,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
             <button type="button" className="btn-action" onClick={abrirFactura} disabled={isOrderLoading}>
               {isOrderLoading
                 ? "Generando..."
-                : `Factura seleccionados (${selectedMantenimientos.length})`}
+                : `Orden / PDF (${selectedMantenimientos.length})`}
             </button>
           )}
           <button type="button" className="btn-action" onClick={() => navigate("/cronograma")}>
@@ -3893,7 +4039,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
             <div className="maintenance-modal-head">
               <div>
                 <h2 id="create-maintenance-title">Crear mantenimiento</h2>
-                <p>Si ya tienes el número de reporte, escríbelo aquí. Si lo dejas vacío, el sistema generará un PR automáticamente y lo guardará sin activo asociado.</p>
+                <p>Si ya tienes el número de reporte, escríbelo aquí. Si lo dejas vacío, el sistema generará el siguiente consecutivo automáticamente.</p>
               </div>
               <button type="button" className="maintenance-modal-close" onClick={closeCreateModal} aria-label="Cerrar modal">
                 <svg
@@ -3926,7 +4072,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                         onChange={handleChange}
                         placeholder={getNumeroReporteLabel(form.tipo)}
                         aria-label="Número de reporte"
-                        required={!isPuntoRedTipo(form.tipo)}
+                        required={isCronogramaTipo(form.tipo)}
                       />
                       <small>{getNumeroReporteHelp(form.tipo)}</small>
                     </div>
@@ -3999,7 +4145,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                               <strong>{draft.numeroReporte ? draft.numeroReporte : "Sin consecutivo"}</strong>
                             </div>
                             <div className="maintenance-form-field">
-                              <label htmlFor={`create-mantenimiento-${draftConfig.key}-reporte`}>Número de reporte / consecutivo</label>
+                              <label htmlFor={`create-mantenimiento-${draftConfig.key}-reporte`}>Número de reporte / consecutivo (opcional)</label>
                               <input
                                 id={`create-mantenimiento-${draftConfig.key}-reporte`}
                                 type="text"
@@ -4007,9 +4153,8 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                                 onChange={(event) => updateDoubleDraftField(draftConfig.key, "numeroReporte", event.target.value)}
                                 placeholder="Consecutivo editable"
                                 aria-label={`Número de reporte ${draftConfig.label}`}
-                                required
                               />
-                              <small>Puedes cambiarlo sin perder la sugerencia automática.</small>
+                              <small>Puedes dejarlo vacío y el sistema sugerirá el siguiente consecutivo automáticamente.</small>
                             </div>
                             <div className="maintenance-form-field">
                               <label htmlFor={`create-mantenimiento-${draftConfig.key}-cambio`}>Cambio de partes</label>
@@ -4022,13 +4167,13 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                               />
                             </div>
                             <div className="maintenance-form-field maintenance-form-field-wide">
-                              <label htmlFor={`create-mantenimiento-${draftConfig.key}-descripcion`}>Descripción</label>
+                              <label htmlFor={`create-mantenimiento-${draftConfig.key}-descripcion`}>Observaciones</label>
                               <textarea
                                 id={`create-mantenimiento-${draftConfig.key}-descripcion`}
                                 value={draft.descripcion || ""}
                                 onChange={(event) => updateDoubleDraftField(draftConfig.key, "descripcion", event.target.value)}
-                                placeholder={`Descripción ${draftConfig.label.toLowerCase()}`}
-                                aria-label={`Descripción ${draftConfig.label}`}
+                                placeholder={`Observaciones ${draftConfig.label.toLowerCase()}`}
+                                aria-label={`Observaciones ${draftConfig.label}`}
                               />
                             </div>
                           </article>
@@ -4050,14 +4195,14 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                       />
                     </div>
                     <div className="maintenance-form-field maintenance-form-field-wide">
-                      <label htmlFor="create-mantenimiento-descripcion">Descripción</label>
+                      <label htmlFor="create-mantenimiento-descripcion">Observaciones</label>
                       <textarea
                         id="create-mantenimiento-descripcion"
                         name="descripcion"
                         value={form.descripcion}
                         onChange={handleChange}
-                        placeholder="Descripción"
-                        aria-label="Descripción"
+                        placeholder="Observaciones"
+                        aria-label="Observaciones"
                       />
                     </div>
                   </>
@@ -4099,19 +4244,15 @@ export default function MantenimientosPage({ selectedEntidadId }) {
               mantenimiento={facturaTargets[0] || modalMantenimiento || {}}
               isAdmin={isAdmin}
               mantenimientoConsecutivo={obtenerConsecutivoMantenimiento((facturaTargets[0] || modalMantenimiento || {}).id)}
+              numeroOrdenSugerido={numeroOrdenSugerido}
+              ordenExistente={facturaTargets.length === 1 ? ordenExistente : null}
               onClose={cerrarFactura}
               isProcessing={isOrderLoading}
               bulkSelectionCount={facturaTargets.length}
               bulkSelectionSummary={facturaTargetsSummary}
               onOrdenFirmada={async (facturaPayload) => {
-                if (!facturaPayload.usuarioFirma || !facturaPayload.autorizaFirma) {
-                  setError("Se requieren las firmas del usuario habitual/area y de quien autoriza.");
-                  return;
-                }
-                const usuarioHabitual = String(facturaPayload.usuarioNombre || "").trim().toLowerCase();
-                const autorizaNombre = String(facturaPayload.autorizaNombre || "").trim().toLowerCase();
-                if (usuarioHabitual && autorizaNombre && usuarioHabitual === autorizaNombre) {
-                  setError("Quien autoriza debe ser una persona diferente al usuario habitual.");
+                if (!facturaPayload.usuarioFirma) {
+                  setError("Se requiere la firma del usuario habitual/área.");
                   return;
                 }
                 await generarOrdenesConFactura(facturaPayload, facturaTargets);
@@ -4127,7 +4268,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                         Detalle de mantenimiento #
                         {obtenerConsecutivoMantenimiento(modalMantenimiento.id) || modalMantenimiento.id}
                       </h2>
-                      <p>Edita datos del mantenimiento y genera la orden desde la factura oficial.</p>
+                      <p>Edita datos del mantenimiento y genera la orden desde el documento oficial.</p>
                     </div>
                     <button type="button" className="maintenance-modal-close" onClick={cerrarModal} aria-label="Cerrar modal">
                       <svg
@@ -4311,7 +4452,7 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                   </div>
 
                   <div className="maintenance-field maintenance-field-wide">
-                    <label htmlFor="detail-mantenimiento-descripcion">Descripción</label>
+                    <label htmlFor="detail-mantenimiento-descripcion">Observaciones</label>
                     <textarea
                       id="detail-mantenimiento-descripcion"
                       value={modalMantenimiento.descripcion || ""}
@@ -4334,12 +4475,12 @@ export default function MantenimientosPage({ selectedEntidadId }) {
                   onClick={abrirFactura}
                   disabled={isOrderLoading}
                   title={selectedMantenimientos.length > 0
-                    ? `Aplicar factura a ${selectedMantenimientos.length} mantenimientos seleccionados`
-                    : "Generar factura, PDF u orden"}
+                    ? `Aplicar orden a ${selectedMantenimientos.length} mantenimientos seleccionados`
+                    : "Generar orden, PDF o documento"}
                 >
                   {selectedMantenimientos.length > 1
-                    ? `Factura / Pdf / Orden (${selectedMantenimientos.length})`
-                    : "Factura / Pdf / Orden"}
+                    ? `Orden / PDF (${selectedMantenimientos.length})`
+                    : "Orden / PDF"}
                 </button>
                 <button
                   type="button"

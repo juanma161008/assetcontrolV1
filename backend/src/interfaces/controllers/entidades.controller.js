@@ -16,7 +16,10 @@ const extractEntityPayload = (body = {}) => ({
   nombre: body.nombre,
   nit: body.nit,
   tipo: body.tipo,
-  direccion: body.direccion
+  direccion: body.direccion,
+  tipos_equipos_permitidos: Array.isArray(body.tipos_equipos_permitidos)
+    ? body.tipos_equipos_permitidos
+    : []
 });
 
 const normalizeAreaList = (raw) => {

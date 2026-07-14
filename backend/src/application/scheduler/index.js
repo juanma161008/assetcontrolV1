@@ -10,8 +10,52 @@ import NotificacionPgRepository from "../../infrastructure/repositories/Notifica
 import CrearNotificacion from "../notificaciones/CrearNotificacion.js";
 import SmtpEmailProvider from "../../infrastructure/email/SmtpEmailProvider.js";
 import { formatPeriodo } from "../../utils/kpi.js";
+import ConfiguracionRespaldoPgRepository from "../../infrastructure/repositories/ConfiguracionRespaldoPgRepository.js";
+import OrdenPgRepository from "../../infrastructure/repositories/OrdenPgRepository.js";
+import SimplePdfService from "../../infrastructure/pdf/SimplePdfService.js";
+import EjecutarRespaldo from "../respaldo/EjecutarRespaldo.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const BACKUP_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+
+const isSameDay = (a, b) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+// Revisa cada 15 minutos si toca correr el respaldo diario configurado desde la UI
+// (Usuarios > Respaldo), en vez de esperar 24h fijas como los demas jobs de este
+// archivo, para respetar la hora que el admin/tecnico eligio.
+const runDailyBackupIfDue = async () => {
+  try {
+    const configuracionRepo = new ConfiguracionRespaldoPgRepository();
+    const config = await configuracionRepo.obtener();
+    if (!config?.habilitado || !config?.carpeta_destino) return;
+
+    const now = new Date();
+    const [horaConfigurada, minutoConfigurado] = String(config.hora || "02:00")
+      .split(":")
+      .map((value) => Number(value));
+
+    const horaObjetivo = new Date(now);
+    horaObjetivo.setHours(
+      Number.isFinite(horaConfigurada) ? horaConfigurada : 2,
+      Number.isFinite(minutoConfigurado) ? minutoConfigurado : 0,
+      0,
+      0
+    );
+
+    if (now < horaObjetivo) return;
+
+    const ultimaEjecucion = config.ultima_ejecucion ? new Date(config.ultima_ejecucion) : null;
+    if (ultimaEjecucion && isSameDay(ultimaEjecucion, now)) return;
+
+    const ordenRepo = new OrdenPgRepository();
+    const pdfService = new SimplePdfService();
+    const usecase = new EjecutarRespaldo(configuracionRepo, ordenRepo, pdfService);
+    await usecase.execute();
+  } catch (err) {
+    console.error("Error en respaldo automatico diario:", err?.message || err);
+  }
+};
 
 const resolveReportRecipients = async () => {
   const envRecipients = String(process.env.REPORTES_EMAILS || "").trim();
@@ -134,4 +178,7 @@ export const startSchedulers = () => {
 
   runAll();
   setInterval(runAll, DAY_MS);
+
+  runDailyBackupIfDue();
+  setInterval(runDailyBackupIfDue, BACKUP_CHECK_INTERVAL_MS);
 };

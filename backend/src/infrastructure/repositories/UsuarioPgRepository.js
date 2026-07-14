@@ -4,8 +4,11 @@ import pool from "../database/postgres.js";
 const DEFAULT_ROLES = [
   { id: 1, nombre: "Administrador" },
   { id: 2, nombre: "Tecnico" },
-  { id: 3, nombre: "Usuario" }
+  { id: 3, nombre: "Usuario" },
+  { id: 4, nombre: "Interventor" }
 ];
+
+const INTERVENTOR_ROLE_NAME = "Interventor";
 
 const PASSWORD_HISTORY_LIMIT = Math.max(1, Number(env.PASSWORD_HISTORY_LIMIT) || 5);
 
@@ -48,6 +51,8 @@ export default class UsuarioPgRepository {
     this.securityTableReady = false;
     this.userEntityTableReady = false;
     this.passwordHistoryTableReady = false;
+    this.interventorRoleReady = false;
+    this.interventorRoleId = null;
   }
 
   async ensureSecurityTable() {
@@ -345,7 +350,91 @@ export default class UsuarioPgRepository {
     await pool.query("DELETE FROM usuarios WHERE id=$1", [id]);
   }
 
+  async ensureInterventorRole() {
+    if (this.interventorRoleReady) {
+      return;
+    }
+
+    if (process.env.NODE_ENV === "test") {
+      this.interventorRoleReady = true;
+      return;
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO roles (nombre)
+         SELECT $1
+         WHERE NOT EXISTS (SELECT 1 FROM roles WHERE nombre ILIKE $1)`,
+        [INTERVENTOR_ROLE_NAME]
+      );
+    } catch {
+      // La tabla roles puede no existir o la BD no permitir el insert; no bloquear la app.
+    } finally {
+      this.interventorRoleReady = true;
+    }
+  }
+
+  async getInterventorRoleId() {
+    if (this.interventorRoleId) {
+      return this.interventorRoleId;
+    }
+
+    await this.ensureInterventorRole();
+
+    if (process.env.NODE_ENV === "test") {
+      return null;
+    }
+
+    try {
+      const res = await pool.query(
+        "SELECT id FROM roles WHERE nombre ILIKE $1 LIMIT 1",
+        [INTERVENTOR_ROLE_NAME]
+      );
+      this.interventorRoleId = res.rows[0]?.id ?? null;
+    } catch {
+      this.interventorRoleId = null;
+    }
+
+    return this.interventorRoleId;
+  }
+
+  async findInterventoresByEntidades(entidadIds = []) {
+    const normalizedIds = Array.from(
+      new Set(
+        (Array.isArray(entidadIds) ? entidadIds : [])
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      )
+    );
+
+    if (!normalizedIds.length) {
+      return [];
+    }
+
+    const interventorRoleId = await this.getInterventorRoleId();
+    if (!interventorRoleId) {
+      return [];
+    }
+
+    await this.ensureUserEntityTable();
+
+    try {
+      const res = await pool.query(
+        `SELECT DISTINCT u.id, u.nombre, u.email
+         FROM usuarios u
+         INNER JOIN usuario_entidades ue ON ue.usuario_id = u.id
+         WHERE u.rol_id = $1 AND ue.entidad_id = ANY($2::int[]) AND COALESCE(u.activo, true) = true`,
+        [interventorRoleId, normalizedIds]
+      );
+      return Array.isArray(res.rows) ? res.rows : [];
+    } catch {
+      return [];
+    }
+  }
+
   async findRoles() {
+    await this.ensureInterventorRole();
+
     try {
       const res = await pool.query("SELECT id, nombre FROM roles ORDER BY id ASC");
       if (Array.isArray(res.rows) && res.rows.length > 0) {

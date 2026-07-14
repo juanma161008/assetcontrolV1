@@ -11,6 +11,7 @@ import { buildAssetsPdfReportHtml } from "../../utils/assetsReport";
 import { buildDocumentEmailHtml } from "../../utils/emailDocuments";
 import { toProperCase } from "../../utils/formatters";
 import useAnimatedPresence from "../../hooks/useAnimatedPresence";
+import useSilentAutoRefresh from "../../hooks/useSilentAutoRefresh";
 import {
   ACTIVO_CATEGORY_OPTIONS,
   CATEGORY_SUMMARY_KEYS,
@@ -863,15 +864,16 @@ export default function ActivosPage({ selectedEntidadId, selectedEntidadNombre }
     };
 
     window.addEventListener("storage", onStorage);
-    const interval = setInterval(() => {
-      cargarActivos();
-    }, 10000);
 
     return () => {
       window.removeEventListener("storage", onStorage);
-      clearInterval(interval);
     };
   }, [cargarActivos, cargarBajas, cargarEntidades]);
+
+  useSilentAutoRefresh(
+    () => Promise.all([cargarActivos(), cargarEntidades(), cargarBajas()]),
+    { enabled: !showFormModal && !showDetailModal && !showBajaModal && !showEmailModal && !isImporting }
+  );
 
   useEffect(() => {
     if (!showFormModal || editId) return;

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import httpClient from "../../services/httpClient";
 import { getCurrentUser, isAuthenticated } from "../../services/authService";
 import { hasPermission } from "../../utils/permissions";
+import useSilentAutoRefresh from "../../hooks/useSilentAutoRefresh";
 import "../../styles/Cronograma.css";
 
 const WEEK_DAYS = ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"];
@@ -390,14 +391,14 @@ export default function CronogramaPage({ selectedEntidadId, selectedEntidadNombr
   const [manualCronogramaInfo, setManualCronogramaInfo] = useState("");
   const [isCreatingManualCronograma, setIsCreatingManualCronograma] = useState(false);
 
-  const loadData = async () => {
+  const loadData = async ({ withLoading = true } = {}) => {
     if (!isAuthenticated()) {
-      setIsLoading(false);
+      if (withLoading) setIsLoading(false);
       return;
     }
 
     try {
-      setError("");
+      if (withLoading) setError("");
       const [mantenimientosResponse, activosResponse] = await Promise.all([
         httpClient.get("/api/mantenimientos"),
         httpClient.get("/api/activos")
@@ -418,17 +419,28 @@ export default function CronogramaPage({ selectedEntidadId, selectedEntidadNombr
       setActivosById(activosMap);
       setMantenimientos(Array.isArray(mantData) ? mantData : []);
     } catch (err) {
-      setError(err?.response?.data?.message || "No se pudo cargar el cronograma");
-      setMantenimientos([]);
-      setActivosById({});
+      if (withLoading) {
+        setError(err?.response?.data?.message || "No se pudo cargar el cronograma");
+        setMantenimientos([]);
+        setActivosById({});
+      }
     } finally {
-      setIsLoading(false);
+      if (withLoading) setIsLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useSilentAutoRefresh(() => loadData({ withLoading: false }), {
+    enabled:
+      !isSelectingDays &&
+      !isDetailOpen &&
+      !showManualCronogramaForm &&
+      !isCreatingManualCronograma &&
+      !sendingReminderId
+  });
 
   useEffect(() => {
     const body = globalThis?.document?.body;

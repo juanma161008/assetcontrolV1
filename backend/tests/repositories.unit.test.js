@@ -142,6 +142,7 @@ describe("Postgres repositories", () => {
       estado: "Pendiente"
     };
 
+    pool.query.mockResolvedValueOnce({ rows: [{ numero_reporte: "REP-001" }] });
     pool.query.mockResolvedValueOnce({ rows: [{ id: 3 }] });
     const created = await repo.create(data);
     expect(created).toEqual({ id: 3 });
@@ -154,7 +155,7 @@ describe("Postgres repositories", () => {
     });
     expect(updated).toEqual({ id: 3, estado: "Finalizado" });
     expect(pool.query).toHaveBeenNthCalledWith(
-      3,
+      4,
       expect.stringContaining("numero_reporte=CASE WHEN $9 THEN $7 ELSE numero_reporte END"),
       ["2026-01-01", "Preventivo", "OK", 2, 4, "Finalizado", "RPT-001", true, true, 3]
     );
@@ -163,7 +164,7 @@ describe("Postgres repositories", () => {
     const updatedWithNullTecnico = await repo.update(3, { tecnico_id: null, numeroReporte: null });
     expect(updatedWithNullTecnico).toEqual({ id: 3, tecnico_id: null });
     expect(pool.query).toHaveBeenNthCalledWith(
-      4,
+      5,
       expect.stringContaining("numero_reporte=CASE WHEN $9 THEN $7 ELSE numero_reporte END"),
       [null, null, null, null, null, null, null, true, true, 3]
     );
@@ -171,7 +172,7 @@ describe("Postgres repositories", () => {
     pool.query.mockResolvedValueOnce({ rows: [] });
     await repo.delete(3);
     expect(pool.query).toHaveBeenNthCalledWith(
-      5,
+      6,
       "DELETE FROM mantenimientos WHERE id=$1",
       [3]
     );
@@ -197,6 +198,15 @@ describe("Postgres repositories", () => {
     pool.query.mockResolvedValueOnce({ rows: [{ id: 10, estado: "Firmada" }] });
     const found = await repo.findById(10);
     expect(found).toEqual({ id: 10, estado: "Firmada" });
+    expect(pool.query).toHaveBeenLastCalledWith(expect.stringContaining("m.numero_reporte"), [10]);
+  });
+
+  it("MantenimientoPgRepository buildNextNumeroReporte genera el siguiente numero correctamente", async () => {
+    const repo = new MantenimientoPgRepository();
+    pool.query.mockResolvedValueOnce({ rows: [{ numero_reporte: "REP-001" }, { numero_reporte: "REP-100" }] });
+
+    const next = await repo.buildNextNumeroReporte();
+    expect(next).toBe("REP-101");
   });
 
   it("PermisoPgRepository mapea permisos por rol", async () => {

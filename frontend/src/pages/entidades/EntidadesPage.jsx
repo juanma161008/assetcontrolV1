@@ -8,6 +8,8 @@ import httpClient from "../../services/httpClient";
 import { fetchCurrentUser, getCurrentUser, isAuthenticated } from "../../services/authService";
 import { getRoleLabel, hasPermission } from "../../utils/permissions";
 import { toProperCase } from "../../utils/formatters";
+import { EQUIPO_OPTIONS_BY_CATEGORY } from "../../utils/activosCategoria";
+import useSilentAutoRefresh from "../../hooks/useSilentAutoRefresh";
 
 const MOBILE_BREAKPOINT = 768;
 const TABLET_BREAKPOINT = 1024;
@@ -559,6 +561,75 @@ const styles = {
   mobileCardSelected: {
     borderColor: "var(--brand-700)",
     boxShadow: "0 0 0 1px var(--brand-tint-stronger), 0 8px 20px rgba(2, 48, 89, 0.15)"
+  },
+  tiposEquiposContainer: {
+    border: "1px solid #dbe3f1",
+    borderRadius: "8px",
+    padding: "12px",
+    backgroundColor: "#f8fbff",
+    marginBottom: "15px"
+  },
+  tiposEquiposHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    marginBottom: "12px"
+  },
+  tiposEquiposTitle: {
+    margin: 0,
+    fontSize: "14px",
+    color: "#0f172a",
+    fontWeight: 700
+  },
+  tiposEquiposGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+    gap: "10px",
+    marginBottom: "12px"
+  },
+  tiposEquiposCheckbox: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "8px",
+    cursor: "pointer",
+    borderRadius: "6px",
+    transition: "background-color 0.2s"
+  },
+  tiposEquiposCheckboxChecked: {
+    backgroundColor: "#e2e8f0"
+  },
+  tiposEquiposTagList: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px"
+  },
+  tiposEquiposTag: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    backgroundColor: "var(--brand-tint-strong)",
+    border: "1px solid var(--brand-tint-stronger)",
+    borderRadius: "999px",
+    padding: "6px 10px",
+    fontSize: "12px",
+    fontWeight: 600,
+    color: "#0f172a"
+  },
+  tiposEquiposTagRemove: {
+    border: "none",
+    borderRadius: "999px",
+    backgroundColor: "#b91c1c",
+    color: "white",
+    padding: "2px 6px",
+    fontSize: "11px",
+    cursor: "pointer",
+    fontWeight: 600
+  },
+  tiposEquiposEmpty: {
+    fontSize: "12px",
+    color: "#64748b",
+    fontWeight: 600
   }
 };
 
@@ -570,7 +641,8 @@ const INITIAL_FORM = {
   areas_primarias: [],
   areas_secundarias: [],
   areas_primarias_input: "",
-  areas_secundarias_input: ""
+  areas_secundarias_input: "",
+  tipos_equipos_permitidos: []
 };
 
 export default function EntidadesPage() {
@@ -691,6 +763,8 @@ export default function EntidadesPage() {
 
     init();
   }, [refreshData]);
+
+  useSilentAutoRefresh(() => refreshData({ withLoading: false }), { enabled: !saving && !editingId });
 
   useEffect(() => {
     const browserWindow = getBrowserWindow();
@@ -867,6 +941,33 @@ export default function EntidadesPage() {
     handleAddArea(areasKey, inputKey);
   };
 
+  const toggleTipoEquipo = (tipo) => {
+    setForm((prev) => {
+      const actuales = Array.isArray(prev.tipos_equipos_permitidos) ? prev.tipos_equipos_permitidos : [];
+      const index = actuales.indexOf(tipo);
+      if (index > -1) {
+        // Si existe, quitarlo
+        return {
+          ...prev,
+          tipos_equipos_permitidos: actuales.filter((_, i) => i !== index)
+        };
+      } else {
+        // Si no existe, agregarlo
+        return {
+          ...prev,
+          tipos_equipos_permitidos: [...actuales, tipo]
+        };
+      }
+    });
+  };
+
+  const removeTipoEquipo = (tipo) => {
+    setForm((prev) => ({
+      ...prev,
+      tipos_equipos_permitidos: (prev.tipos_equipos_permitidos || []).filter((t) => t !== tipo)
+    }));
+  };
+
   const validateForm = () => {
     if (!form.nombre.trim()) {
       setError("El nombre es requerido");
@@ -889,7 +990,10 @@ export default function EntidadesPage() {
     tipo: form.tipo.trim(),
     direccion: form.direccion.trim() || null,
     areas_primarias: sanitizeAreaList(form.areas_primarias),
-    areas_secundarias: sanitizeAreaList(form.areas_secundarias)
+    areas_secundarias: sanitizeAreaList(form.areas_secundarias),
+    tipos_equipos_permitidos: Array.isArray(form.tipos_equipos_permitidos)
+      ? [...new Set(form.tipos_equipos_permitidos.filter(Boolean))]
+      : []
   });
 
   const handleSubmit = async (event) => {
@@ -940,7 +1044,10 @@ export default function EntidadesPage() {
       areas_primarias: sanitizeAreaList(entidad.areas_primarias),
       areas_secundarias: sanitizeAreaList(entidad.areas_secundarias),
       areas_primarias_input: "",
-      areas_secundarias_input: ""
+      areas_secundarias_input: "",
+      tipos_equipos_permitidos: Array.isArray(entidad.tipos_equipos_permitidos)
+        ? entidad.tipos_equipos_permitidos
+        : []
     });
   };
 
@@ -1404,6 +1511,72 @@ export default function EntidadesPage() {
             </div>
           </div>
 
+          <div style={styles.tiposEquiposContainer}>
+            <div style={styles.tiposEquiposHeader}>
+              <h4 style={styles.tiposEquiposTitle}>Tipos de Equipos Permitidos</h4>
+              <span style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>
+                ({form.tipos_equipos_permitidos?.length || 0} seleccionados)
+              </span>
+            </div>
+
+            <div style={styles.tiposEquiposGrid}>
+              {Object.values(EQUIPO_OPTIONS_BY_CATEGORY)
+                .flat()
+                .filter((tipo) => !tipo.includes("Otro"))
+                .map((tipo) => {
+                  const isChecked = (form.tipos_equipos_permitidos || []).includes(tipo);
+                  return (
+                    <label
+                      key={tipo}
+                      style={{
+                        ...styles.tiposEquiposCheckbox,
+                        ...(isChecked ? styles.tiposEquiposCheckboxChecked : {})
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleTipoEquipo(tipo)}
+                        disabled={saving || !isAdmin}
+                        style={{ cursor: saving || !isAdmin ? "not-allowed" : "pointer" }}
+                      />
+                      <span>{tipo}</span>
+                    </label>
+                  );
+                })}
+            </div>
+
+            {form.tipos_equipos_permitidos && form.tipos_equipos_permitidos.length > 0 && (
+              <div>
+                <p style={{ margin: "8px 0", fontSize: "13px", fontWeight: 600, color: "#334155" }}>
+                  Seleccionados:
+                </p>
+                <div style={styles.tiposEquiposTagList}>
+                  {form.tipos_equipos_permitidos.map((tipo) => (
+                    <span key={tipo} style={styles.tiposEquiposTag}>
+                      <span>{tipo}</span>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => removeTipoEquipo(tipo)}
+                          style={styles.tiposEquiposTagRemove}
+                          disabled={saving}
+                          title="Remover tipo de equipo"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(!form.tipos_equipos_permitidos || form.tipos_equipos_permitidos.length === 0) && (
+              <p style={styles.tiposEquiposEmpty}>Sin tipos de equipos seleccionados</p>
+            )}
+          </div>
+
           <div style={{ ...styles.formRow, marginBottom: 0 }}>
             <div
               style={{
@@ -1551,6 +1724,7 @@ export default function EntidadesPage() {
                 <th style={styles.th}>NIT</th>
                 <th style={styles.th}>Áreas Primarias</th>
                 <th style={styles.th}>Áreas Secundarias</th>
+                <th style={styles.th}>Tipos de Equipos</th>
                 {isAdmin && <th style={styles.th}>Acciones</th>}
               </tr>
             </thead>
@@ -1572,6 +1746,11 @@ export default function EntidadesPage() {
                   <td style={styles.td}>{entidad.nit || "-"}</td>
                   <td style={styles.td}>{formatAreaList(entidad.areas_primarias) || "-"}</td>
                   <td style={styles.td}>{formatAreaList(entidad.areas_secundarias) || "-"}</td>
+                  <td style={styles.td}>
+                    {Array.isArray(entidad.tipos_equipos_permitidos) && entidad.tipos_equipos_permitidos.length > 0
+                      ? entidad.tipos_equipos_permitidos.join(", ")
+                      : "-"}
+                  </td>
                   {isAdmin && (
                     <td style={styles.td}>
                       <div style={styles.actionsCell}>

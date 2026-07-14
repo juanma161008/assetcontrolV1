@@ -21,7 +21,10 @@ export default class CrearOrden {
       fecha: data.fecha || now.toISOString().slice(0, 10),
       estado: data.estado || "Generada",
       creado_por: data.creado_por ?? usuarioId,
-      mantenimientos
+      mantenimientos,
+      firmante_nombre: data.usuarioNombre || null,
+      firmante_area: data.usuarioArea || null,
+      firmante_cargo: data.usuarioCargo || null
     };
 
     const orden = await this.ordenRepository.create(payload);

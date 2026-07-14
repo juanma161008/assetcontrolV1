@@ -269,7 +269,7 @@ body.modal-open {
   position: sticky;
   top: 0;
   z-index: 1000;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .app-header::before {
@@ -310,7 +310,7 @@ body.modal-open {
   pointer-events: auto;
 }
 
-@media (min-width: 993px) {
+@media (min-width: 1100px) {
   .header-backdrop {
     display: none;
   }
@@ -1207,7 +1207,7 @@ body.modal-open {
   transform: translateY(-8px) rotate(-45deg);
 }
 
-@media (max-width: 992px) {
+@media (max-width: 1099px) {
   .mobile-menu-toggle {
     display: flex;
   }
@@ -1275,7 +1275,8 @@ body.modal-open {
     order: 4;
     flex-direction: column;
     align-items: stretch;
-    background: linear-gradient(135deg, var(--brand-900) 0%, var(--brand-800) 100%);
+    background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+    border: 1px solid #d6e0f0;
     padding: 12px;
     gap: 10px;
     border-radius: 12px;
@@ -1293,6 +1294,9 @@ body.modal-open {
 
   .header-user .user-info {
     flex: 1;
+    background: #ffffff;
+    border: 1px solid #dbe4f4;
+    box-shadow: none;
   }
 
   .header-user .header-user-menu {
@@ -1302,15 +1306,16 @@ body.modal-open {
   .header-user .user-info-button {
     width: 100%;
     justify-content: space-between;
+    color: #0f172a;
   }
 
   .header-user .user-dropdown {
     position: static;
     margin-top: 8px;
     border-radius: 8px;
-    border-color: rgba(255, 255, 255, 0.2);
+    border-color: #dbe4f4;
     box-shadow: none;
-    background: rgba(255, 255, 255, 0.1);
+    background: #ffffff;
   }
 
   .header-user .user-dropdown-link {
@@ -1449,6 +1454,39 @@ body.modal-open {
   .header-user .btn-logout {
     width: 100%;
     justify-content: center;
+  }
+
+  .header-user .user-info.rol-admin,
+  .header-user .user-info.rol-tecnico,
+  .header-user .user-info.rol-usuario {
+    background: #ffffff;
+    box-shadow: none;
+  }
+
+  .header-user .user-info.rol-admin .user-name,
+  .header-user .user-info.rol-admin .user-role,
+  .header-user .user-info.rol-tecnico .user-name,
+  .header-user .user-info.rol-tecnico .user-role,
+  .header-user .user-info.rol-usuario .user-name,
+  .header-user .user-info.rol-usuario .user-role {
+    color: #0f172a;
+  }
+
+  .header-user .user-info.rol-admin .user-role,
+  .header-user .user-info.rol-tecnico .user-role,
+  .header-user .user-info.rol-usuario .user-role {
+    background: rgba(2, 31, 89, 0.08);
+  }
+
+  .header-user .user-avatar {
+    background: #021f59;
+    border-color: #021f59;
+    color: #ffffff;
+  }
+
+  .header-user .user-bell {
+    background: rgba(2, 31, 89, 0.08);
+    color: #021f59;
   }
 
   .header-user-menu.open .user-dropdown {

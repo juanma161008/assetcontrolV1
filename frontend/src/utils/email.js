@@ -64,7 +64,8 @@ export function buildMaintenanceEmailDraft(maintenance = {}, asset = null) {
   const numeroReporte = sanitize(
     maintenanceData.numeroReporte ||
     maintenanceData.numero_reporte ||
-    maintenanceData.numeroreporte
+    maintenanceData.numeroreporte,
+    ""
   );
 
   const lines = [
@@ -73,13 +74,13 @@ export function buildMaintenanceEmailDraft(maintenance = {}, asset = null) {
     "Comparto el detalle del mantenimiento:",
     "",
     `ID mantenimiento: ${sanitize(maintenanceData.id)}`,
-    `Nro reporte: ${numeroReporte}`,
+    `Número de reporte: ${numeroReporte || "Sin reporte"}`,
     `Fecha: ${formatDate(maintenanceData.fecha)}`,
     `Activo: ${sanitize(numeroActivo)}`,
     `Tipo: ${sanitize(maintenanceData.tipo)}`,
     `Estado: ${sanitize(maintenanceData.estado, "En proceso")}`,
     `Técnico: ${sanitize(maintenanceData.tecnico)}`,
-    `Descripcion: ${sanitize(maintenanceData.descripcion)}`
+    `Observaciones: ${sanitize(maintenanceData.descripcion)}`
   ];
 
   if (Object.keys(assetData).length > 0) {

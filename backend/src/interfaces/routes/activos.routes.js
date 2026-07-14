@@ -14,7 +14,7 @@ router.use(jwtAuth);
 // Listar activos
 router.get(
   "/",
-  permisosAuth(["VER_ACTIVOS"]),
+  permisosAuth(["VER_ACTIVOS", "FIRMAR_ORDEN_INTERVENTOR"]),
   controller.listarActivos
 );
 

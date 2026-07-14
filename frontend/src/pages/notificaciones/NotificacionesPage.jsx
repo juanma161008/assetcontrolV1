@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import httpClient from "../../services/httpClient";
+import useSilentAutoRefresh from "../../hooks/useSilentAutoRefresh";
 import "../../styles/InfoPages.css";
 import "../../styles/Notificaciones.css";
 
@@ -48,9 +49,9 @@ export default function NotificacionesPage() {
     return params.toString();
   }, [limit, safePage, search, tipo, estado]);
 
-  const loadNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async ({ withLoading = true } = {}) => {
     try {
-      setIsLoading(true);
+      if (withLoading) setIsLoading(true);
       setError("");
       const query = buildParams();
       const response = await httpClient.get(`/api/notificaciones?${query}`);
@@ -59,17 +60,21 @@ export default function NotificacionesPage() {
       setItems(list);
       setTotal(Number(payload?.total ?? list.length));
     } catch (err) {
-      setError(err?.response?.data?.message || "No se pudieron cargar las notificaciones.");
-      setItems([]);
-      setTotal(0);
+      if (withLoading) {
+        setError(err?.response?.data?.message || "No se pudieron cargar las notificaciones.");
+        setItems([]);
+        setTotal(0);
+      }
     } finally {
-      setIsLoading(false);
+      if (withLoading) setIsLoading(false);
     }
   }, [buildParams]);
 
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
+
+  useSilentAutoRefresh(() => loadNotifications({ withLoading: false }));
 
   useEffect(() => {
     setPage(1);

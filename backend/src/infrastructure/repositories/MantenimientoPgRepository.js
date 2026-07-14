@@ -1,5 +1,48 @@
 import pool from "../database/postgres.js";
 
+const getLastDigitGroup = (value = "") => {
+  const source = String(value || "").trim();
+  if (!source) return "";
+
+  const regex = /\d+/g;
+  let match = regex.exec(source);
+  let lastMatch = "";
+  while (match) {
+    lastMatch = match[0];
+    match = regex.exec(source);
+  }
+  return lastMatch;
+};
+
+const extractReportNumberParts = (value = "") => {
+  const source = String(value || "").trim();
+  if (!source) return null;
+
+  const regex = /\d+/g;
+  let match = regex.exec(source);
+  let lastMatch = null;
+  while (match) {
+    lastMatch = match;
+    match = regex.exec(source);
+  }
+
+  if (!lastMatch) return null;
+  const digits = lastMatch[0];
+  const index = Number.isInteger(lastMatch.index) ? lastMatch.index : source.lastIndexOf(digits);
+  const number = Number(digits);
+
+  if (!Number.isInteger(number) || number <= 0) {
+    return null;
+  }
+
+  return {
+    prefix: source.slice(0, index),
+    suffix: source.slice(index + digits.length),
+    number,
+    width: digits.length
+  };
+};
+
 export default class MantenimientoPgRepository {
   constructor() {
     this.hasActivoColumnCache = null;
@@ -149,6 +192,27 @@ export default class MantenimientoPgRepository {
     return res.rows;
   }
 
+  async buildNextNumeroReporte() {
+    const res = await pool.query(
+      `SELECT numero_reporte FROM mantenimientos WHERE numero_reporte IS NOT NULL`
+    );
+    const rows = Array.isArray(res.rows) ? res.rows : [];
+    const parsed = rows
+      .map((row) => extractReportNumberParts(row.numero_reporte || ""))
+      .filter((item) => item !== null);
+
+    if (parsed.length === 0) {
+      return "REP-001";
+    }
+
+    const highest = parsed.reduce((best, current) => (
+      current.number > best.number ? current : best
+    ));
+
+    const nextNumber = highest.number + 1;
+    return `${highest.prefix}${String(nextNumber).padStart(highest.width, "0")}${highest.suffix}`;
+  }
+
   async create(data) {
     const [
       hasNumeroReporteColumn,
@@ -161,8 +225,12 @@ export default class MantenimientoPgRepository {
       this.ensureChecklistColumn(),
       this.ensurePointRedColumns()
     ]);
-    const numeroReporte = String(data?.numeroReporte ?? data?.numero_reporte ?? "").trim() || null;
+    let numeroReporte = String(data?.numeroReporte ?? data?.numero_reporte ?? "").trim() || null;
     const cambioPartes = String(data?.cambio_partes ?? data?.cambioPartes ?? "").trim() || null;
+
+    if (!numeroReporte && hasNumeroReporteColumn) {
+      numeroReporte = await this.buildNextNumeroReporte();
+    }
     const checklist = data?.checklist ?? data?.checklist_items ?? null;
     const entidadIdRaw = data?.entidad_id ?? data?.entidadId ?? null;
     const entidadIdValue = entidadIdRaw === null || entidadIdRaw === undefined || String(entidadIdRaw).trim() === ""
