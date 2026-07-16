@@ -44,6 +44,7 @@ const NAV_STRUCTURE = [
     items: [
       { path: "/usuarios", label: "Usuarios", permissions: ["ADMIN_TOTAL"] },
       { path: "/auditoria", label: "Auditoría", permissions: ["ADMIN_TOTAL"] },
+      { path: "/respaldo", label: "Copia de seguridad", permissions: ["ADMIN_TOTAL"] },
       { path: "/iso-55000", label: "ISO 55000", permissions: ["VER_ACTIVOS"] }
     ]
   },

@@ -17,6 +17,7 @@ import AyudaPage from "../pages/ayuda/AyudaPage";
 import AcercaDePage from "../pages/acerca-de/AcercaDePage";
 import NotificacionesPage from "../pages/notificaciones/NotificacionesPage";
 import Iso55000Page from "../pages/iso/Iso55000Page";
+import RespaldoPage from "../pages/respaldo/RespaldoPage";
 
 // Layout Components
 import Header from "../components/layout/Header";
@@ -602,6 +603,18 @@ function App() {
                   mustChangePassword={mustChangePassword}
                 >
                   <Iso55000Page />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/respaldo"
+              element={
+                <ProtectedRoute
+                  user={user}
+                  requiredPermissions={["ADMIN_TOTAL"]}
+                  mustChangePassword={mustChangePassword}
+                >
+                  <RespaldoPage />
                 </ProtectedRoute>
               }
             />
