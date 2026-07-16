@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import logo from "../assets/logos/logom5.png";
 import "../styles/Orden.css";
@@ -934,7 +935,10 @@ export default function FacturaMantenimiento({
       </div>
 
       {/* Modal legal que aparece antes de permitir firmar. */}
-      {showLegalConsentModal && (
+      {/* Se renderiza en un portal a document.body para que el position:fixed no quede
+          atrapado dentro del contenedor .modal-dialog (tiene transform/will-change y
+          rompe el centrado cuando la orden es larga y está scrolleada). */}
+      {showLegalConsentModal && typeof document !== "undefined" && createPortal(
         <div
           className="signature-modal-overlay consent-modal-overlay"
           onClick={(event) => {
@@ -986,11 +990,12 @@ export default function FacturaMantenimiento({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Modal del lienzo de firma digital. */}
-      {showSignatureModal && (
+      {/* Modal del lienzo de firma digital (también en portal, ver comentario arriba). */}
+      {showSignatureModal && typeof document !== "undefined" && createPortal(
         <div
           className="signature-modal-overlay"
           onClick={(event) => {
@@ -1027,7 +1032,8 @@ export default function FacturaMantenimiento({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
