@@ -12,6 +12,7 @@ import OrdenesPage from "../pages/ordenes/OrdenesPage";
 import AuditoriaPage from "../pages/auditoria/AuditoriaPage";
 import EntidadesPage from "../pages/entidades/EntidadesPage";
 import UsuariosPage from "../pages/usuarios/UsuariosPage";
+import RespaldoPage from "../pages/respaldo/RespaldoPage";
 import MiCuentaPage from "../pages/mi-cuenta/MiCuentaPage";
 import AyudaPage from "../pages/ayuda/AyudaPage";
 import AcercaDePage from "../pages/acerca-de/AcercaDePage";
@@ -566,6 +567,18 @@ function App() {
                   mustChangePassword={mustChangePassword}
                 >
                   <UsuariosPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/respaldo"
+              element={
+                <ProtectedRoute
+                  user={user}
+                  requiredPermissions={["ADMIN_TOTAL"]}
+                  mustChangePassword={mustChangePassword}
+                >
+                  <RespaldoPage />
                 </ProtectedRoute>
               }
             />

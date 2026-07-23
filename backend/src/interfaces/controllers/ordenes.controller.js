@@ -22,7 +22,7 @@ const repo = new OrdenPgRepository();
 const mantenimientoRepo = new MantenimientoPgRepository();
 const userRepo = new UsuarioPgRepository();
 const logUseCase = new RegistrarLog(new LogPgRepository());
-const pdfUseCase = new GenerarPDF(new SimplePdfService());
+const pdfUseCase = new GenerarPDF(new SimplePdfService(repo));
 const notificacionRepo = new NotificacionPgRepository();
 const crearNotificacionUseCase = new CrearNotificacion(notificacionRepo);
 

@@ -49,7 +49,7 @@ const runDailyBackupIfDue = async () => {
     if (ultimaEjecucion && isSameDay(ultimaEjecucion, now)) return;
 
     const ordenRepo = new OrdenPgRepository();
-    const pdfService = new SimplePdfService();
+    const pdfService = new SimplePdfService(ordenRepo);
     const usecase = new EjecutarRespaldo(configuracionRepo, ordenRepo, pdfService);
     await usecase.execute();
   } catch (err) {
