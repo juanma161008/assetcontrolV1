@@ -1,7 +1,11 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import ConfiguracionRespaldoPgRepository from "../../infrastructure/repositories/ConfiguracionRespaldoPgRepository.js";
 import OrdenPgRepository from "../../infrastructure/repositories/OrdenPgRepository.js";
 import SimplePdfService from "../../infrastructure/pdf/SimplePdfService.js";
 import EjecutarRespaldo from "../../application/respaldo/EjecutarRespaldo.js";
+import respaldarBaseDatos from "../../application/respaldo/respaldarBaseDatos.js";
 import RegistrarLog from "../../application/auditoria/RegistrarLog.js";
 import LogPgRepository from "../../infrastructure/repositories/LogPgRepository.js";
 import { success, error } from "../../utils/response.js";
@@ -84,6 +88,48 @@ export async function ejecutarRespaldoAhora(req, res) {
 
     return success(res, resultado, resultado.ok ? "Respaldo generado correctamente" : "Respaldo generado con errores");
   } catch (e) {
+    return error(res, e.message || "No se pudo generar el respaldo", 400);
+  }
+}
+
+// Genera el respaldo de la base de datos y lo entrega como descarga: no se
+// guarda en la carpeta compartida del servidor, sino directo en el equipo de
+// quien lo pide, para que cada usuario pueda tener su propia copia.
+export async function descargarRespaldo(req, res) {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  const nombreArchivo =
+    `assetcontrol-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+    `_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}.sql`;
+  const archivoTemporal = path.join(os.tmpdir(), `assetcontrol-descarga-${Date.now()}-${process.pid}.sql`);
+
+  try {
+    respaldarBaseDatos(archivoTemporal);
+
+    try {
+      await logUseCase.execute({
+        usuario_id: req.user?.id ?? null,
+        accion: "DESCARGAR_RESPALDO",
+        entidad: "RESPALDO"
+      });
+    } catch {
+      // No bloquear la descarga si falla la auditoria.
+    }
+
+    res.download(archivoTemporal, nombreArchivo, (err) => {
+      fs.unlink(archivoTemporal, () => {});
+      if (err && !res.headersSent) {
+        error(res, "No se pudo descargar el respaldo", 500);
+      }
+    });
+  } catch (e) {
+    if (fs.existsSync(archivoTemporal)) {
+      try {
+        fs.unlinkSync(archivoTemporal);
+      } catch {
+        // Ignorar errores de limpieza.
+      }
+    }
     return error(res, e.message || "No se pudo generar el respaldo", 400);
   }
 }

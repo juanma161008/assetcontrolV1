@@ -26,6 +26,7 @@ export default function RespaldoPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [ejecutando, setEjecutando] = useState(false);
+  const [descargando, setDescargando] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -123,6 +124,49 @@ export default function RespaldoPage() {
     }
   };
 
+  const descargarACesteEquipo = async () => {
+    if (descargando) return;
+
+    setError("");
+    setSuccess("");
+    setDescargando(true);
+    try {
+      const response = await httpClient.get("/api/respaldo/descargar", { responseType: "blob" });
+      const disposition = response.headers?.["content-disposition"] || "";
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      const nombreSugerido = match?.[1] || `assetcontrol-backup-${Date.now()}.sql`;
+
+      if (typeof window.showSaveFilePicker === "function") {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: nombreSugerido,
+          types: [{ description: "Respaldo SQL", accept: { "application/sql": [".sql"] } }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(response.data);
+        await writable.close();
+      } else {
+        const url = URL.createObjectURL(response.data);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = nombreSugerido;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      setSuccess("Copia de seguridad descargada a este equipo.");
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        // El usuario cerro el dialogo de guardado, no es un error real.
+        return;
+      }
+      setError(err?.response?.data?.message || "No se pudo descargar la copia de seguridad.");
+    } finally {
+      setDescargando(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="page-content">
@@ -209,6 +253,17 @@ export default function RespaldoPage() {
           </button>
         </div>
       </form>
+
+      <div className="respaldo-descarga">
+        <h2>Copia de seguridad en tu equipo</h2>
+        <p>
+          Descarga ahora mismo un respaldo de la base de datos directo a tu computador, sin
+          depender de la carpeta compartida configurada arriba. Tú eliges dónde guardarlo.
+        </p>
+        <button type="button" className="btn-action" onClick={descargarACesteEquipo} disabled={descargando}>
+          {descargando ? "Descargando..." : "Descargar copia a este equipo"}
+        </button>
+      </div>
 
       <div className="respaldo-estado">
         <h2>Último respaldo</h2>

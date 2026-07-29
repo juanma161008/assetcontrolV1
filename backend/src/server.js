@@ -78,7 +78,7 @@ app.use(cors({
     return callback(new Error(`Origen no permitido por CORS: ${origin}`), false);
   },
   credentials: true,
-  exposedHeaders: ["x-request-id"]
+  exposedHeaders: ["x-request-id", "content-disposition"]
 }));
 
 app.use(express.json({ limit: "10mb" }));

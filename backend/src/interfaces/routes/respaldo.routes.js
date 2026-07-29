@@ -11,5 +11,6 @@ router.use(permisosAuth(["ADMIN_TOTAL"]));
 router.get("/configuracion", controller.obtenerConfiguracion);
 router.put("/configuracion", controller.guardarConfiguracion);
 router.post("/ejecutar", controller.ejecutarRespaldoAhora);
+router.get("/descargar", controller.descargarRespaldo);
 
 export default router;
