@@ -8,7 +8,7 @@ import { success, error } from "../../utils/response.js";
 
 const configuracionRepo = new ConfiguracionRespaldoPgRepository();
 const ordenRepo = new OrdenPgRepository();
-const pdfService = new SimplePdfService();
+const pdfService = new SimplePdfService(ordenRepo);
 const logUseCase = new RegistrarLog(new LogPgRepository());
 
 const PROVEEDORES_VALIDOS = ["local", "onedrive", "googledrive"];

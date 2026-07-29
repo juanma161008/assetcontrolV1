@@ -1,0 +1,85 @@
+.respaldo-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.respaldo-page h1 {
+  margin-bottom: 6px;
+}
+
+.respaldo-page > p {
+  color: #475569;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.respaldo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #f8fbff;
+  border: 1px solid #d9e3f5;
+  border-radius: 10px;
+  padding: 18px;
+}
+
+.respaldo-form .campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.respaldo-form .campo label {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1e293b;
+}
+
+.respaldo-form .campo small {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.respaldo-form .campo-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.respaldo-acciones {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.respaldo-estado {
+  margin-top: 20px;
+  border: 1px solid #d9e3f5;
+  border-radius: 10px;
+  padding: 16px 18px;
+  background: #ffffff;
+}
+
+.respaldo-estado h2 {
+  margin-top: 0;
+  font-size: 16px;
+}
+
+.respaldo-detalle {
+  color: #475569;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.texto-exito {
+  color: #14532d;
+  font-weight: 700;
+}
+
+.texto-error {
+  color: #991b1b;
+  font-weight: 700;
+}

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test *)",
+      "Bash(npm run *)",
+      "Bash(find .claude/skills -maxdepth 2 -iname \"SKILL.md\")",
+      "Bash(grep -Hm1 '^description:' .claude/skills/*/SKILL.md)"
+    ]
+  }
+}

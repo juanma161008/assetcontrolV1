@@ -22,7 +22,8 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^7.0.13",
-    "pg": "^8.18.0"
+    "pg": "^8.18.0",
+    "puppeteer-core": "^25.3.0"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
