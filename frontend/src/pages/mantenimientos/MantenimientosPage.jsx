@@ -4251,10 +4251,9 @@ export default function MantenimientosPage({ selectedEntidadId }) {
               bulkSelectionCount={facturaTargets.length}
               bulkSelectionSummary={facturaTargetsSummary}
               onOrdenFirmada={async (facturaPayload) => {
-                if (!facturaPayload.usuarioFirma) {
-                  setError("Se requiere la firma del usuario habitual/área.");
-                  return;
-                }
+                // La orden se guarda en la base de datos aunque aun no tenga firma
+                // (queda "pendiente por firma"); generarOrdenParaMantenimiento ya
+                // omite el paso de firmar cuando usuarioFirma viene vacio.
                 await generarOrdenesConFactura(facturaPayload, facturaTargets);
               }}
             />

@@ -710,18 +710,12 @@ export default function FacturaMantenimiento({
     abrirVentanaImpresion("pdf");
   };
 
-  // Valida que ambas firmas existan antes de devolver la orden firmada al flujo principal.
+  // Genera la orden en el servidor aunque aun no tenga firma: queda guardada como
+  // "pendiente por firma" y se puede firmar despues desde Ordenes de trabajo.
   const handleGenerarOrden = () => {
     if (!onOrdenFirmada || isProcessing) return;
-    if (!datosFactura.usuarioFirma) {
-      globalThis.alert("Debes registrar la firma del usuario habitual/área.");
-      return;
-    }
 
-    onOrdenFirmada({
-      ...datosFactura,
-      usuarioFirma: datosFactura.usuarioFirma
-    });
+    onOrdenFirmada({ ...datosFactura });
   };
 
   // Muestra la firma guardada o el botón que inicia el flujo de firma.
@@ -896,9 +890,13 @@ export default function FacturaMantenimiento({
                 onClick={handleGenerarOrden}
                 className="btn-imprimir"
                 type="button"
-                disabled={!datosFactura.usuarioFirma || isProcessing}
+                disabled={isProcessing}
               >
-                {isProcessing ? "Generando..." : "Guardar Y Generar Orden"}
+                {isProcessing
+                  ? "Generando..."
+                  : datosFactura.usuarioFirma
+                    ? "Guardar Y Generar Orden"
+                    : "Generar Orden (Pendiente De Firma)"}
               </button>
             )}
             {onClose && (
